@@ -2,10 +2,10 @@
 
 # App Summary:
 
-We identified a group of people similar to Kaleb who are people that want to go to more campus and local acitivties and events.
-Often times people like Kaleb are only willing to go to activites if it meets certain critierias (has food, if friends want/are able to).
-Additionally it can be hard for Caleb and his friends to find relevant activities, their locations, time, and other information about the events
-since they are often posted in a plethra of different sites and physical advertisement.
+We identified a group of people similar to Kaleb who want to go to more campus and local activities and events.
+Oftentimes, people like Kaleb are only willing to go to activities if it meets certain criteria (has food, if friends want/can).
+Additionally, it can be hard for Caleb and his friends to find relevant activities, their locations, time, and other information about the events
+since they are often posted in a plethora of different sites and physical advertisements.
 
 # ERD: 
 <img width="1710" height="1107" alt="Screenshot 2026-10-07 at 3 57 01 PM" src="https://github.com/user-attachments/assets/b8ab864f-8352-45f6-9083-1221c3c2c010" />
