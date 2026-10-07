@@ -5,10 +5,13 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
+require('dotenv').config();
+const { createClient } = require('@supabase/supabase-js');
+
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "public");
 const port = Number(process.env.PORT || 3000);
 const supabaseUrl = process.env.SUPABASE_URL;
-const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+const publishableKey = process.env.SUPABASE_KEY;
 const configured = Boolean(supabaseUrl && publishableKey);
 const production = process.env.NODE_ENV === "production";
 if (Boolean(supabaseUrl) !== Boolean(publishableKey))
