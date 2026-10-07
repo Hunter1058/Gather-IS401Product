@@ -1,0 +1,23 @@
+{
+  "name": "gather-campus-events",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Gather campus events: vanilla HTML, CSS, JavaScript, Node.js and Supabase",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --watch --env-file-if-exists=.env server.js",
+    "test": "node --test tests/*.test.js",
+    "test:browser": "node tests/browser.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
+    "lucide": "^0.468.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

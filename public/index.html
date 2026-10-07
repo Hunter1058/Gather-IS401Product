@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#dce7f5" />
+    <title>Gather • Your campus, connected</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="vendor/lucide.min.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <header>
+      <div class="row">
+        <button
+          class="mobile-menu"
+          id="menuButton"
+          aria-label="Open navigation"
+          aria-expanded="false"
+          onclick="toggleMenu()"
+        >
+          <i data-lucide="menu"></i>
+        </button>
+        <div class="brand">
+          Gather<span>.</span><small>YOUR CAMPUS, CONNECTED</small>
+        </div>
+      </div>
+      <nav id="topnav" aria-label="Main navigation"></nav>
+      <button class="header-user" id="userButton" onclick="go('login')">
+        Sign in
+      </button>
+    </header>
+    <aside id="drawer" class="drawer" hidden aria-label="Navigation">
+      <button onclick="toggleMenu()">Close menu</button>
+      <div class="brand">Gather<span>.</span></div>
+      <div id="sideNav"></div>
+    </aside>
+    <main id="app"><div class="empty">Loading your campus…</div></main>
+    <footer>
+      <span>Gather. · More campus. More connection.</span
+      ><span id="footerMode"
+        >Student prototype · Sample events, not official BYU listings</span
+      >
+    </footer>
+    <dialog id="modal" aria-label="Event details"></dialog>
+    <div id="toast" class="toast" role="status"></div>
+  </body>
+</html>
