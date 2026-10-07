@@ -5,8 +5,6 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
-require('dotenv').config();
-const { createClient } = require('@supabase/supabase-js');
 
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "public");
 const port = Number(process.env.PORT || 3000);
@@ -386,3 +384,4 @@ if (process.env.NODE_ENV !== "test")
       `Gather: http://localhost:${port} (${configured ? "Supabase" : "demo"} mode)`,
     ),
   );
+  

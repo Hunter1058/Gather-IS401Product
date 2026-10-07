@@ -21,5 +21,19 @@ since they are often posted in a plethora of different sites and physical advert
 This stack fits our team because it uses familiar web technologies, keeps development simple, and gives us the tools needed to build both the frontend and backend without unnecessary complexity.
 
 
-How to Get It Running: Step-by-step instructions for getting a working copy -- from a fresh copy of the code, or, on a hosted platform, how to open the project and the live app.
+# How to Get It Running:
+
+- Download the files
+- create a local .env file within the main folder
+- create 2 keys "SUPABASE_URL = 'SUPABASE URL' and SUPABASE_KEY = 'SUPABASE PUBLICATION KEY URL'
+- this connects the site to your supabase
+
+- Run npm install inside the terminal to ensure everythings downloaded
+- run "node server.js" in terminal to start the site locally
+
+
+
+ Step-by-step instructions for getting a working copy -- from a fresh copy of the code, or, on a hosted platform, how to open the project and the live app.
 Verifying the Vertical Slice: How to trigger your working button and confirm the change survives a page refresh.
+
+
