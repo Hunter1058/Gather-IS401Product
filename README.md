@@ -33,6 +33,13 @@ This stack fits our team because it uses familiar web technologies, keeps develo
 - run "node --env-file=.env server.js" in terminal to start the site locally in "SUPABASE Mode"
 - It should be running locally now! :)
 
-Verifying the Vertical Slice: How to trigger your working button and confirm the change survives a page refresh.
+# Verifying the Vertical Slice: How to trigger your working button and confirm the change survives a page refresh.
+
+- Click the sign in button in the top right corner of the screen
+- Select the create a new account option
+- Create your account
+- Once the account is created, refresh your page
+- You should still be signed in
+- If you log out and refresh your page you should also be able to log back in regardless of the page refresh
 
 
