@@ -24,16 +24,15 @@ This stack fits our team because it uses familiar web technologies, keeps develo
 # How to Get It Running:
 
 - Download the files
+- Run npm install inside the terminal to ensure everythings downloaded
+- Create a supabase and run schema.sql and seed.sql inside the SQL Editor on Supabase
 - create a local .env file within the main folder
 - create 2 keys "SUPABASE_URL = 'SUPABASE URL' and SUPABASE_KEY = 'SUPABASE PUBLICATION KEY URL'
 - this connects the site to your supabase
 
-- Run npm install inside the terminal to ensure everythings downloaded
-- run "node server.js" in terminal to start the site locally
+- run "node --env-file=.env server.js" in terminal to start the site locally in "SUPABASE Mode"
+- It should be running locally now! :)
 
-
-
- Step-by-step instructions for getting a working copy -- from a fresh copy of the code, or, on a hosted platform, how to open the project and the live app.
 Verifying the Vertical Slice: How to trigger your working button and confirm the change survives a page refresh.
 
 
