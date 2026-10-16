@@ -53,7 +53,7 @@ function json(res, status, body) {
 }
 
 function cookie(id, maxAge = 604800) {
-  return `gather_session=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${production ? "; Secure" : ""}`;
+  return `gather_session=${id}; Only; SameSite=Lax; Path=/; Max-Age=${maxAge}${production ? "; Secure" : ""}`;
 }
 
 function sid(req) {
@@ -94,7 +94,7 @@ async function body(req) {
 function isSameOrigin(req) {
   const origin = req.headers.origin;
   if (!origin) return req.headers["sec-fetch-site"] !== "cross-site";
-  return origin === (process.env.APP_ORIGIN || `http://${req.headers.host}`);
+  return origin === (process.env.APP_ORIGIN || `://${req.headers.host}`);
 }
 
 export const server = http.createServer(async (req, res) => {
@@ -237,6 +237,8 @@ export const server = http.createServer(async (req, res) => {
     return json(res, e.status || 500, { error: e.status ? e.message : "The request could not be completed." });
   }
 });
+
+export default server;
 
 if (process.env.NODE_ENV !== "test")
   server.listen(port, () => console.log(`Gather: http://localhost:${port} (${configured ? "Supabase" : "demo"} mode)`));
