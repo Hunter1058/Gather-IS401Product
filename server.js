@@ -13,7 +13,7 @@ const configured = Boolean(supabaseUrl && publishableKey);
 const production = process.env.NODE_ENV === "production";
 
 if (Boolean(supabaseUrl) !== Boolean(publishableKey))
-  throw Error("Set both SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY, or neither for demo mode.");
+  throw Error("Set both SUPABASE_URL and SUPABASE_KEY, or neither for demo mode.");
 if (publishableKey?.startsWith("sb_secret_"))
   throw Error("Use a publishable key, never a secret key.");
 if (publishableKey?.startsWith("eyJ")) {
@@ -53,7 +53,7 @@ function json(res, status, body) {
 }
 
 function cookie(id, maxAge = 604800) {
-  return `gather_session=${id}; Only; SameSite=Lax; Path=/; Max-Age=${maxAge}${production ? "; Secure" : ""}`;
+  return `gather_session=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${production ? "; Secure" : ""}`;
 }
 
 function sid(req) {
@@ -94,7 +94,7 @@ async function body(req) {
 function isSameOrigin(req) {
   const origin = req.headers.origin;
   if (!origin) return req.headers["sec-fetch-site"] !== "cross-site";
-  return origin === (process.env.APP_ORIGIN || `://${req.headers.host}`);
+  return origin === (process.env.APP_ORIGIN || `http://${req.headers.host}`);
 }
 
 export const server = http.createServer(async (req, res) => {
@@ -238,7 +238,12 @@ export const server = http.createServer(async (req, res) => {
   }
 });
 
-export default server;
+export default function handler(req, res) {
+  server.emit("request", req, res);
+}
 
-if (process.env.NODE_ENV !== "test")
-  server.listen(port, () => console.log(`Gather: http://localhost:${port} (${configured ? "Supabase" : "demo"} mode)`));
+if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
+  server.listen(port, () =>
+    console.log(`Gather: http://localhost:${port} (${configured ? "Supabase" : "demo"} mode)`)
+  );
+}
