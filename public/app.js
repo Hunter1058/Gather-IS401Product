@@ -5,7 +5,8 @@
  * --------------------------------------
  * This script currently powers the original dynamic home shell. The Events
  * experience is now moving into public/events.js and /events, while this file
- * continues to own the home, account, navigation, and remaining legacy pages.
+ * continues to own the home, navigation, and remaining legacy pages.
+ * Login and sign-up are owned by auth.js at /login and /signup.
  */
 
 // Browser and rendering helpers.
@@ -98,6 +99,10 @@ function toggleMenu() {
   $("menuButton").setAttribute("aria-expanded", String(open));
 }
 function go(p) {
+  if (p === "login" || p === "signup") {
+    location.assign("/" + p);
+    return;
+  }
   if (p === "list" || p === "calendar") {
     location.assign(p === "calendar" ? "/events?view=calendar" : "/events");
     return;
@@ -476,67 +481,6 @@ function toggleInterest(c) {
   persist();
   render();
 }
-function demoAuth(signup = false) {
-  if (data.user && !signup)
-    return `<div class="auth"><span class="eyebrow">Welcome back</span><h2>${esc(data.user.name)}</h2><p class="muted">Your plans are saved in this browser.</p><button class="primary" onclick="go('saved')">View saved events</button><button onclick="signOut()">Sign out</button></div>`;
-  return `<form class="auth" onsubmit="authenticate(event,${signup})"><span class="eyebrow">Find your place</span><h2>${signup ? "Make yourself at home." : "Welcome back."}</h2><p class="muted">${signup ? "Create a demo profile to personalize your visit." : "Sign in to your demo profile."}</p><div class="notice">Prototype only. Use fictional details and a demo password. For a quick tour: <b>student / gather123</b>.</div>${signup ? '<label>Name<input name="name" required maxlength="60" autocomplete="off"></label><label>Email<input name="email" type="email" required autocomplete="off"></label>' : ""}<label>Username<input name="username" required autocomplete="off"></label><label>Password<input name="password" type="password" minlength="6" required autocomplete="off"></label><div id="authError" class="error" role="alert"></div><button class="primary">${signup ? "Create account" : "Sign in"}</button><button type="button" onclick="go('${signup ? "login" : "signup"}')">${signup ? "Already have an account? Sign in" : "New here? Create an account"}</button><button type="button" onclick="go('home')">Continue as guest →</button></form>`;
-}
-async function hash(s) {
-  if (!crypto.subtle) throw Error("secure");
-  let bytes = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(s),
-  );
-  return Array.from(new Uint8Array(bytes))
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
-}
-async function demoAuthenticate(ev, signup) {
-  ev.preventDefault();
-  let f = Object.fromEntries(new FormData(ev.target)),
-    u = f.username.trim().toLowerCase();
-  if (!u || (signup && !f.name.trim())) {
-    $("authError").textContent =
-      "Enter a name and username that are not blank.";
-    return;
-  }
-  if (signup) {
-    if (u === "student" || data.accounts.some((a) => a.username === u)) {
-      $("authError").textContent =
-        "That username is already taken. Try another.";
-      return;
-    }
-    try {
-      let a = {
-        name: f.name.trim(),
-        username: u,
-        passwordHash: await hash(f.password),
-      };
-      data.accounts.push(a);
-      data.user = { name: a.name, username: u };
-    } catch (e) {
-      $("authError").textContent =
-        "Account creation requires a supported browser. Use the demo sign-in or continue as guest.";
-      return;
-    }
-  } else {
-    let a = data.accounts.find((a) => a.username === u),
-      valid = u === "student" && f.password === "gather123";
-    if (a)
-      try {
-        valid = a.passwordHash === (await hash(f.password));
-      } catch (e) {}
-    if (!valid) {
-      $("authError").textContent =
-        "Username or password is incorrect. Please try again.";
-      return;
-    }
-    data.user = { name: a ? a.name : "Student", username: u };
-  }
-  persist();
-  go("home");
-  toast(signup ? "Demo account created" : "Welcome back");
-}
 // Shell navigation and page selection. Standalone routes are dispatched here.
 function renderBase() {
   let links = [
@@ -559,7 +503,6 @@ function renderBase() {
     .map(([p, n]) => `<button onclick="go('${p}')">${n}</button>`)
     .join("");
   $("userButton").textContent = data.user ? data.user.name + " ↗" : "Sign in ↗";
-  $("menuButton").hidden = page === "login" || page === "signup";
   $("app").innerHTML =
     page === "home"
       ? home()
@@ -567,9 +510,7 @@ function renderBase() {
         ? browse()
         : page === "friends"
           ? friendsPage()
-          : page === "login" || page === "signup"
-            ? auth(page === "signup")
-            : '<div class="empty"><h1>Page not found</h1><p>Let’s get you back to campus.</p><button onclick="go(\'home\')">Go home</button></div>';
+          : '<div class="empty"><h1>Page not found</h1><p>Let’s get you back to campus.</p><button onclick="go(\'home\')">Go home</button></div>';
 }
 
 /* Presentation helpers — Lucide icons and semantic category classes. */
@@ -720,73 +661,19 @@ function render() {
           ? "Connected to Supabase · Your personal plans"
           : "Connected to Supabase · Sign in to save plans";
 }
-function auth(signup = false) {
-  if (backendMode === "demo") return demoAuth(signup);
-  if (data.user && !signup)
-    return `<div class="auth"><span class="eyebrow">Your account</span><h2>${esc(data.user.name)}</h2><p class="muted">${esc(data.user.email)}</p><button class="primary" onclick="go('saved')">View saved plans</button><button onclick="signOut()">Sign out</button></div>`;
-  return `<form class="auth" onsubmit="authenticate(event,${signup})"><span class="eyebrow">Your campus, connected</span><h2>${signup ? "Find your place." : "Welcome back."}</h2><p class="muted">${signup ? "Create your Gather account." : "Sign in to keep your plans together."}</p>${signup ? '<label>Name<input name="name" required maxlength="60" autocomplete="name"></label>' : ""}<label>Email<input name="email" type="email" required autocomplete="email"></label><label>Password<input name="password" type="password" minlength="8" required autocomplete="${signup ? "new-password" : "current-password"}"></label><div id="authError" class="error" role="alert"></div><button class="primary" type="submit">${signup ? "Create account" : "Sign in"}</button><button type="button" onclick="go('${signup ? "login" : "signup"}')">${signup ? "Already have an account? Sign in" : "Create an account"}</button><button type="button" onclick="go('home')">Continue as guest</button></form>`;
-}
 async function loadState() {
   stateReady = false;
   const result = await api("/state");
   data = { ...emptyState(), ...result.state, user: data.user };
   stateReady = true;
 }
-async function authenticate(ev, signup) {
-  if (backendMode === "demo") return demoAuthenticate(ev, signup);
-  ev.preventDefault();
-  const f = Object.fromEntries(new FormData(ev.target));
-  const btn = ev.target.querySelector("[type=submit]");
-  btn.disabled = true;
-  try {
-    const result = await api("/auth/" + (signup ? "signup" : "login"), {
-      method: "POST",
-      body: JSON.stringify(f),
-    });
-    if (!result.user) {
-      $("authError").textContent =
-        result.message ||
-        "Check your email to confirm your account, then sign in.";
-      return;
-    }
-    data = { ...emptyState(), user: result.user };
-    try {
-      await loadState();
-    } catch (e) {
-      go("home");
-      toast("Signed in, but plans could not load. Reload to retry.");
-      return;
-    }
-    go("home");
-    toast("Welcome to Gather");
-  } catch (e) {
-    $("authError").textContent = e.message;
-  } finally {
-    btn.disabled = false;
-  }
-}
-async function signOut() {
-  if (backendMode === "supabase") {
-    clearTimeout(syncTimer);
-    try {
-      await syncChain;
-      if (syncFailed) {
-        toast("Save your changes before signing out. Use Retry saving below.");
-        return;
-      }
-      await api("/auth/logout", { method: "POST", body: "{}" });
-    } catch (e) {
-      toast("Could not sign out. Please try again.");
-      return;
-    }
-    data = emptyState();
-  } else {
-    data.user = null;
-    persistDemo();
-  }
-  go("home");
-}
 async function boot() {
+  const legacyPage = location.hash.slice(1);
+  if (["login", "signup"].includes(legacyPage)) {
+    location.replace("/" + legacyPage);
+    return;
+  }
+  if (["saved", "friends"].includes(legacyPage)) page = legacyPage;
   if (location.protocol !== "file:") {
     try {
       const config = await api("/config");
@@ -815,6 +702,12 @@ async function boot() {
   if (location.hash.startsWith("#event="))
     openEvent(decodeURIComponent(location.hash.slice(7)));
 }
+// Support legacy account links even when only the URL fragment changes.
+window.addEventListener("hashchange", () => {
+  const target = location.hash.slice(1);
+  if (["login", "signup"].includes(target)) location.replace("/" + target);
+  else if (["saved", "friends"].includes(target)) go(target);
+});
 window.addEventListener("beforeunload", (e) => {
   if (backendMode === "supabase" && (pendingSaves || syncFailed)) {
     /* Browsers may warn only after user interaction. */ e.preventDefault();

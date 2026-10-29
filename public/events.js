@@ -52,7 +52,7 @@ function persist() {
   if (!data.user) return;
   api("/state", { method:"PUT", body:JSON.stringify({ saved:data.saved, rsvp:data.rsvp, attended:[], reminders:{}, surveys:{}, friends:data.friends, interests:["Social","Arts"] }) }).catch(()=>toast("Could not sync your saved plans."));
 }
-function requireAccount() { if (backendMode === "demo") return true; if (!data.user) { closeModal(); location.assign("/#login"); toast("Sign in to save your plans."); return false; } return true; }
+function requireAccount() { if (backendMode === "demo") return true; if (!data.user) { closeModal(); location.assign("/login"); toast("Sign in to save your plans."); return false; } return true; }
 function toggleMenu() { const open=$("drawer").hidden; $("drawer").hidden=!open; $("menuButton").setAttribute("aria-expanded",String(open)); }
 
 // Filtering and search: the filters object describes the current query.

@@ -7,6 +7,7 @@
 - `server.js` starts the Node HTTP server, serves static files, validates configuration, and exposes the `/api` routes.
 - `public/index.html` and `public/app.js` provide the original home/dynamic shell during the page-separation migration.
 - `public/events.html` and `public/events.js` implement the standalone Events page at `/events`.
+- `public/login.html`, `public/signup.html`, and `public/auth.js` implement standalone authentication at `/login` and `/signup`, using the existing Supabase Auth API and demo profiles.
 - `public/styles.css` contains the shared visual system and responsive layouts.
 - `supabase/schema.sql` creates the tables and authentication profile trigger.
 - `supabase/seed.sql` is optional development data for a new or empty database.

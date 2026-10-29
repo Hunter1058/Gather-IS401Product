@@ -242,9 +242,10 @@ export const server = http.createServer(async (req, res) => {
     }
 
     // Non-API requests serve files from the public directory.
-    // /events is mapped to events.html so it behaves like a dedicated page.
+    // Dedicated page routes follow the same static HTML mapping.
     if (!["GET", "HEAD"].includes(req.method)) return json(res, 405, { error: "Method not allowed." });
-    if (url.pathname === "/events" || url.pathname === "/events/") url.pathname = "/events.html";
+    const pageRoute = /^\/(events|login|signup)\/?$/.exec(url.pathname);
+    if (pageRoute) url.pathname = `/${pageRoute[1]}.html`;
     const path = resolve(root, "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
     if (!path.startsWith(root + "/")) return json(res, 403, { error: "Forbidden" });
 
