@@ -221,6 +221,7 @@ export const server = http.createServer(async (req, res) => {
     }
 
     if (!["GET", "HEAD"].includes(req.method)) return json(res, 405, { error: "Method not allowed." });
+    if (url.pathname === "/events" || url.pathname === "/events/") url.pathname = "/events.html";
     const path = resolve(root, "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
     if (!path.startsWith(root + "/")) return json(res, 403, { error: "Forbidden" });
 

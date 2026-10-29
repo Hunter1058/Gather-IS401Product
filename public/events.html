@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#dce7f5" />
+    <title>Events · Gather</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script defer src="/vendor/lucide.min.js"></script>
+    <script defer src="/events.js"></script>
+  </head>
+  <body>
+    <header>
+      <div class="row">
+        <button class="mobile-menu" id="menuButton" aria-label="Open navigation" aria-expanded="false" onclick="toggleMenu()">
+          <i data-lucide="menu"></i>
+        </button>
+        <a class="brand" href="/" style="text-decoration:none;color:inherit">Gather<span>.</span><small>YOUR CAMPUS, CONNECTED</small></a>
+      </div>
+      <nav id="topnav" aria-label="Main navigation">
+        <a href="/">Discover</a>
+        <a class="active" href="/events">Events</a>
+        <a href="/events?view=calendar">Calendar</a>
+        <a href="/#saved">Saved</a>
+        <a href="/#friends">Friends</a>
+      </nav>
+      <a class="header-user" id="userButton" href="/#login" style="text-decoration:none">Sign in</a>
+    </header>
+    <aside id="drawer" class="drawer" hidden aria-label="Navigation">
+      <button onclick="toggleMenu()">Close menu</button>
+      <div class="brand">Gather<span>.</span></div>
+      <nav>
+        <a href="/">Discover</a>
+        <a href="/events">Events</a>
+        <a href="/events?view=calendar">Calendar</a>
+        <a href="/#saved">Saved</a>
+        <a href="/#friends">Friends</a>
+        <a id="sideUserButton" href="/#login">Sign in</a>
+      </nav>
+    </aside>
+    <main>
+      <div class="eyebrow">Discover & connect</div>
+      <h1 id="pageTitle">What’s happening at BYU.</h1>
+      <p class="muted">Find something that fits your day. All event times are local to BYU Provo.</p>
+      <section id="toolbar" class="toolbar"></section>
+      <div class="row between section-head">
+        <span id="resultCount" class="muted"></span>
+        <button id="savedPastButton" hidden onclick="setMode('savedPast')">Past saved events →</button>
+      </div>
+      <div id="results"></div>
+    </main>
+    <footer>
+      <span>Gather. · More campus. More connection.</span>
+      <span id="footerMode">Sample events, not official BYU listings</span>
+    </footer>
+    <dialog id="modal" aria-label="Event details"></dialog>
+    <div id="toast" class="toast" role="status"></div>
+  </body>
+</html>

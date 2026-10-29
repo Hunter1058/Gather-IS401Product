@@ -298,6 +298,10 @@ function toggleMenu() {
   $("menuButton").setAttribute("aria-expanded", String(open));
 }
 function go(p) {
+  if (p === "list" || p === "calendar") {
+    location.assign(p === "calendar" ? "/events?view=calendar" : "/events");
+    return;
+  }
   page = p;
   mode = p === "saved" ? "saved" : "upcoming";
   selectedDay = "";
