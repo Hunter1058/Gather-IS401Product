@@ -1,4 +1,14 @@
 "use strict";
+
+/*
+ * Gather legacy/shell application script
+ * --------------------------------------
+ * This script currently powers the original dynamic home shell. The Events
+ * experience is now moving into public/events.js and /events, while this file
+ * continues to own the home, account, navigation, and remaining legacy pages.
+ */
+
+// Browser and rendering helpers.
 const $ = (id) => document.getElementById(id);
 const esc = (s) =>
   String(s).replace(
@@ -12,227 +22,16 @@ const today = new Date();
 today.setHours(0, 0, 0, 0);
 const key = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-function dateAt(offset) {
-  let d = new Date(today);
-  d.setDate(d.getDate() + offset);
-  return key(d);
-}
-const seeds = [
-  [
-    "fall-social",
-    "Fall social on the lawn",
-    "Social",
-    "Maeser Lawn",
-    1,
-    "18:00",
-    "20:00",
-    0,
-    true,
-    "BYUSA",
-    "All majors",
-    "Bring a blanket and meet someone new. Enjoy lawn games, music, and treats as the sun sets over campus.",
-    "FALL / TOGETHER",
-    "",
-    "✳",
-  ],
-  [
-    "jazz",
-    "An evening of jazz",
-    "Arts",
-    "Music Building",
-    3,
-    "19:00",
-    "21:00",
-    5,
-    false,
-    "School of Music",
-    "Fine Arts",
-    "An intimate evening of student jazz ensembles. Arrive 15 minutes early; seating is first come, first served.",
-    "AFTER HOURS",
-    "",
-    "♪",
-  ],
-  [
-    "tech",
-    "Build something together",
-    "Career",
-    "Tanner Building",
-    5,
-    "17:30",
-    "19:30",
-    0,
-    true,
-    "IS Club",
-    "Information Systems",
-    "Meet other builders at a collaborative technology workshop. Bring a laptop; beginners are welcome.",
-    "IDEAS → IMPACT",
-    "",
-    "↗",
-  ],
-  [
-    "service",
-    "A little time. A big difference.",
-    "Service",
-    "Wilkinson Center",
-    7,
-    "16:00",
-    "18:00",
-    0,
-    false,
-    "Y-Serve",
-    "All majors",
-    "Help assemble community care kits. Supplies are provided and friends are welcome.",
-    "GIVE / TOGETHER",
-    "",
-    "✦",
-  ],
-  [
-    "volley",
-    "Cougar game night",
-    "Sports",
-    "Smith Fieldhouse",
-    9,
-    "19:00",
-    "21:00",
-    8,
-    false,
-    "Campus Recreation",
-    "All majors",
-    "Cheer with fellow students at a sample campus sports night. Wear blue and bring your student ID.",
-    "BRING THE BLUE",
-    "",
-    "Y",
-  ],
-  [
-    "french",
-    "Crêpes & conversation",
-    "Culture",
-    "Wilkinson Center",
-    11,
-    "18:00",
-    "19:30",
-    0,
-    true,
-    "French Club",
-    "Humanities",
-    "Practice French over crêpes and casual conversation. All language levels are welcome.",
-    "BONSOIR, BYU",
-    "",
-    "◎",
-  ],
-  [
-    "reflect",
-    "Pause & reflect",
-    "Spiritual",
-    "Marriott Center",
-    14,
-    "11:00",
-    "12:00",
-    0,
-    false,
-    "Campus Community",
-    "All majors",
-    "A sample gathering for reflection, faith, and community. Please arrive before the start time.",
-    "A MOMENT / TO PAUSE",
-    "",
-    "☀",
-  ],
-  [
-    "art",
-    "Sketch your Saturday",
-    "Arts",
-    "Museum of Art",
-    18,
-    "10:00",
-    "12:00",
-    0,
-    false,
-    "Art Club",
-    "Fine Arts",
-    "Join a relaxed sketching session. Bring a sketchbook; pencils and inspiration are provided.",
-    "LOOK / A LITTLE CLOSER",
-    "",
-    "✎",
-  ],
-  [
-    "career",
-    "Meet your next opportunity",
-    "Career",
-    "Tanner Building",
-    33,
-    "15:00",
-    "17:00",
-    0,
-    false,
-    "Career Studio",
-    "Business",
-    "Practice introductions and connect with peers. Bring a résumé if you would like informal feedback.",
-    "HELLO, FUTURE",
-    "",
-    "↗",
-  ],
-  [
-    "past",
-    "Welcome week mixer",
-    "Social",
-    "Maeser Lawn",
-    -3,
-    "18:00",
-    "20:00",
-    0,
-    true,
-    "BYUSA",
-    "All majors",
-    "A relaxed start-of-semester mixer with games and treats.",
-    "GOOD / TO MEET YOU",
-    "",
-    "✳",
-  ],
-  [
-    "past2",
-    "Community service afternoon",
-    "Service",
-    "Wilkinson Center",
-    -8,
-    "14:00",
-    "16:00",
-    0,
-    false,
-    "Y-Serve",
-    "All majors",
-    "Students assembled care kits for community partners.",
-    "SMALL ACTS / BIG HEART",
-    "",
-    "✦",
-  ],
-];
-let events = seeds.map((s, i) => ({
-  id: s[0],
-  name: s[1],
-  category: s[2],
-  location: s[3],
-  date: dateAt(s[4]),
-  start: s[5],
-  end: s[6],
-  price: s[7],
-  food: s[8],
-  club: s[9],
-  major: s[10],
-  description: s[11],
-  poster: s[12],
-  color: undefined,
-  symbol: s[14],
-  offset: s[4],
-  friends: i % 3 === 0 ? ["Emma", "Noah"] : i % 3 === 1 ? ["Sofia"] : [],
-}));
+// Runtime data starts empty; database mode loads events and account state on boot.
+let events = [];
 let data = {
-  saved: ["fall-social", "past"],
+  saved: [],
   rsvp: [],
-  attended: ["past2"],
+  attended: [],
   reminders: {},
   surveys: {},
-  friends: ["Emma", "Noah"],
-  interests: ["Social", "Arts"],
+  friends: [],
+  interests: [],
   user: null,
   accounts: [],
 };
@@ -260,6 +59,7 @@ let page = "home",
   slide = 0,
   paused = matchMedia("(prefers-reduced-motion: reduce)").matches,
   detailId = null;
+// Derived category values and demo-browser persistence.
 let categories = [...new Set(events.map((e) => e.category))];
 function persistDemo() {
   try {
@@ -354,6 +154,7 @@ function attend(id) {
   render();
   openEvent(id);
 }
+// Event discovery, cards, filters, calendar, and event dialogs.
 function listEvents() {
   return events
     .filter((e) => {
@@ -655,6 +456,7 @@ function saveSurvey(ev, id) {
   openEvent(id);
   toast("Your reflection has been saved");
 }
+// Friends and interests page rendered inside the current shell.
 function friendsPage() {
   return `<div class="eyebrow">Better with company</div><h1>Your people. Your interests.</h1><p class="muted">Keep a list of friends and discover what you have in common.</p><div class="notice">Demo profiles and activity are fictional. Adding a friend here does not send an invitation.</div><div class="grid">${["Emma", "Noah", "Sofia", "Liam", "Olivia", "Ethan"].map((n, i) => `<div class="card friend"><span class="avatar">${n[0]}</span><div class="info"><h3>${n}</h3><p class="muted">${["Social & service", "Sports & technology", "Arts & culture"][i % 3]}</p></div><button onclick="toggleFriend('${n}')">${data.friends.includes(n) ? "✓ Added · Remove" : "+ Add friend"}</button></div>`).join("")}</div><div class="prefs"><h2>What are you into?</h2><p class="muted">These interests shape your home page recommendations.</p><div class="chips">${categories.map((c) => `<button class="${data.interests.includes(c) ? "active" : ""}" aria-pressed="${data.interests.includes(c)}" onclick="toggleInterest('${c}')">${c}</button>`).join("")}</div></div>`;
 }
@@ -735,6 +537,7 @@ async function demoAuthenticate(ev, signup) {
   go("home");
   toast(signup ? "Demo account created" : "Welcome back");
 }
+// Shell navigation and page selection. Standalone routes are dispatched here.
 function renderBase() {
   let links = [
     ["home", "Discover"],
@@ -849,7 +652,7 @@ const emptyState = () => ({
   reminders: {},
   surveys: {},
   friends: [],
-  interests: ["Social", "Arts"],
+  interests: [],
   user: null,
   accounts: [],
 });

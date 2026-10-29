@@ -1,5 +1,16 @@
 # Gather-IS401Product
 
+<!-- Maintainer note: Source comments explain each section of server.js and public/. -->
+
+## Code organization
+
+- `server.js` starts the Node HTTP server, serves static files, validates configuration, and exposes the `/api` routes.
+- `public/index.html` and `public/app.js` provide the original home/dynamic shell during the page-separation migration.
+- `public/events.html` and `public/events.js` implement the standalone Events page at `/events`.
+- `public/styles.css` contains the shared visual system and responsive layouts.
+- `supabase/schema.sql` creates the tables and authentication profile trigger.
+- `supabase/seed.sql` is optional development data for a new or empty database.
+
 # App Summary:
 
 We identified a group of people similar to Kaleb who want to go to more campus and local activities and events.

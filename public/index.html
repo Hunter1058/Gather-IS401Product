@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Gather home/shell page: shared navigation wraps the dynamic legacy pages. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -16,6 +17,7 @@
     <script defer src="app.js"></script>
   </head>
   <body>
+    <!-- Shared header, navigation, and mobile drawer. -->
     <header>
       <div class="row">
         <button
@@ -41,6 +43,7 @@
       <div class="brand">Gather<span>.</span></div>
       <div id="sideNav"></div>
     </aside>
+    <!-- app.js replaces the contents of this element for legacy dynamic pages. -->
     <main id="app"><div class="empty">Loading your campus…</div></main>
     <footer>
       <span>Gather. · More campus. More connection.</span

@@ -1,4 +1,6 @@
--- Illustrative events. Dates are relative to the day this seed runs.
+-- Optional development seed data.
+-- Run once in a fresh database; plain INSERT statements would duplicate rows
+-- if executed repeatedly. Dates use current_date so the upcoming/past views remain useful.
 INSERT INTO public."Events" ("EventName", "EventCatagory", "EventLocation", "EventDate", "EventTime", "EventDescription") VALUES 
 ('Fall social on the lawn', 'Social', 'Maeser Lawn', current_date + 1, '18:00', 'Bring a blanket and meet someone new. Enjoy lawn games, music, and treats as the sun sets over campus.'),
 ('An evening of jazz', 'Arts', 'Music Building', current_date + 3, '19:00', 'An intimate evening of student jazz ensembles. Arrive 15 minutes early; seating is first come, first served.'),

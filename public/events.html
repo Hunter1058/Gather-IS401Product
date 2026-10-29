@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Dedicated Events page: contains no event content; events.js loads and renders it. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -13,12 +14,13 @@
     <script defer src="/events.js"></script>
   </head>
   <body>
+    <!-- Shared header and responsive navigation are defined explicitly on this standalone page. -->
     <header>
       <div class="row">
         <button class="mobile-menu" id="menuButton" aria-label="Open navigation" aria-expanded="false" onclick="toggleMenu()">
           <i data-lucide="menu"></i>
         </button>
-        <a class="brand" href="/" style="text-decoration:none;color:inherit">Gather<span>.</span><small>YOUR CAMPUS, CONNECTED</small></a>
+        <a class="brand" href="/" style="text-decoration:none;color:inherit">Gather<span>.</span></a>
       </div>
       <nav id="topnav" aria-label="Main navigation">
         <a href="/">Discover</a>
@@ -41,10 +43,11 @@
         <a id="sideUserButton" href="/#login">Sign in</a>
       </nav>
     </aside>
+    <!-- Page title, search tools, results, and count are rendered by events.js. -->
     <main>
       <div class="eyebrow">Discover & connect</div>
-      <h1 id="pageTitle">What’s happening at BYU.</h1>
-      <p class="muted">Find something that fits your day. All event times are local to BYU Provo.</p>
+      <h1 id="pageTitle">What’s happening</h1>
+      <p class="muted">Find something that fits your day. All event times are local to Provo.</p>
       <section id="toolbar" class="toolbar"></section>
       <div class="row between section-head">
         <span id="resultCount" class="muted"></span>
@@ -53,8 +56,8 @@
       <div id="results"></div>
     </main>
     <footer>
-      <span>Gather. · More campus. More connection.</span>
-      <span id="footerMode">Sample events, not official BYU listings</span>
+      <span>Gather.</span>
+      <span id="footerMode">Sample events</span>
     </footer>
     <dialog id="modal" aria-label="Event details"></dialog>
     <div id="toast" class="toast" role="status"></div>

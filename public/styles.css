@@ -1,4 +1,9 @@
-/* Gather — Frosted Campus Glass. Semantic OKLCH tokens from the supplied guide. */
+/*
+ * Gather styles — Frosted Campus Glass
+ * ------------------------------------
+ * Semantic colors define the theme. Components below combine those tokens,
+ * shared spacing, responsive rules, and accessible interaction states.
+ */
 :root {
   --font-display: "Space Grotesk", sans-serif;
   --font-body: "Inter", sans-serif;
@@ -57,6 +62,7 @@
 * {
   box-sizing: border-box;
 }
+/* Base document, typography defaults, and global controls. */
 body {
   margin: 0;
   min-height: 100vh;
@@ -192,6 +198,7 @@ p {
   margin-top: -7px;
   color: var(--muted-foreground);
 }
+/* Shared site header, navigation, brand, and mobile menu. */
 header {
   position: sticky;
   top: 16px;
@@ -259,6 +266,7 @@ nav a.active {
   font-size: 0.75rem;
   font-weight: 700;
 }
+/* Page content and glass-panel layout. */
 main {
   max-width: 1256px;
   margin: 0 auto;
@@ -305,8 +313,9 @@ main {
   padding: 6px;
   color: var(--primary);
 }
+/* Home hero, quick actions, and featured-event presentation. */
 .hero {
-  display: grid;
+ display: grid;
   grid-template-columns: 1fr 1fr;
   border-radius: 18px;
   overflow: hidden;
@@ -420,6 +429,7 @@ main {
   width: 21px;
   height: 21px;
 }
+/* Event grids, cards, posters, metadata, and card actions. */
 .grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -657,8 +667,9 @@ main {
   width: 100%;
   margin-top: 10px;
 }
+/* Events toolbar, mode chips, search, and filter panel. */
 .toolbar {
-  position: sticky;
+ position: sticky;
   top: 106px;
   z-index: 10;
   padding: 16px;
@@ -736,6 +747,7 @@ input[type="checkbox"] {
   font-size: 12px;
   margin: 17px 0;
 }
+/* Calendar month layout and selected-day schedule. */
 .calendar {
   background: var(--glass);
   border: 1px solid var(--surface);
@@ -858,6 +870,7 @@ align-items: stretch;
 border-radius: 8px;
 padding: 10px 12px;
 }
+/* Event dialogs, friend/preferences content, and mobile drawer. */
 dialog {
   border: 1px solid var(--surface);
   border-radius: 24px;
@@ -935,6 +948,7 @@ summary {
 .toast:empty {
   display: none;
 }
+/* Shared footer and responsive overrides for smaller screens. */
 footer {
   max-width: 1240px;
   margin: auto;

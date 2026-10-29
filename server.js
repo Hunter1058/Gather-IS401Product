@@ -1,3 +1,11 @@
+/*
+ * Gather Node.js server
+ * ---------------------
+ * Serves the static website, exposes the JSON API, validates Supabase
+ * configuration, manages short-lived authenticated sessions, and proxies data
+ * operations that require a signed-in user.
+ */
+
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
@@ -5,6 +13,7 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
+// Server and Supabase configuration. Supabase credentials must be provided together.
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "public");
 const port = Number(process.env.PORT || 3000);
 const supabaseUrl = process.env.SUPABASE_URL;
@@ -25,12 +34,14 @@ if (publishableKey?.startsWith("eyJ")) {
   }
 }
 
+// Each browser login gets its own Supabase client; public reads use a public client.
 const makeClient = () =>
   createClient(supabaseUrl, publishableKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 const publicClient = configured ? makeClient() : null;
 
+// Session and login-attempt storage is in server memory and expires automatically.
 const sessions = new Map(), attempts = new Map();
 const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
 
@@ -47,6 +58,7 @@ const userView = (u) =>
         name: String(u.user_metadata?.name || u.email?.split("@")[0] || "Student").slice(0, 60),
       } : null;
 
+// HTTP response and cookie helpers keep API behavior consistent.
 function json(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(JSON.stringify(body));
@@ -60,6 +72,7 @@ function sid(req) {
   return /(?:^|;\s*)gather_session=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie || "")?.[1];
 }
 
+// Session validation verifies that the signed-in browser still has a valid token.
 async function signedIn(req) {
   let id = sid(req), session = sessions.get(id);
   if (!session || Date.now() - session.seen > SESSION_TTL) return null;
@@ -97,6 +110,7 @@ function isSameOrigin(req) {
   return origin === (process.env.APP_ORIGIN || `http://${req.headers.host}`);
 }
 
+// Main HTTP server: static files, API routes, authentication, and state storage.
 export const server = http.createServer(async (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -107,10 +121,13 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 403, { error: "Request origin is not allowed." });
       
       const route = url.pathname.slice(4);
+
+      // Configuration and health endpoints.
       if (route === "/config" && req.method === "GET") return json(res, 200, { mode: configured ? "supabase" : "demo" });
       if (route === "/health" && req.method === "GET") return json(res, 200, { ok: true });
       if (!configured) return json(res, 503, { error: "Supabase is not configured." });
 
+      // Public event listing: reads rows directly from the Supabase Events table.
       if (route === "/events" && req.method === "GET") {
         const { data, error } = await publicClient
           .from("Events")
@@ -137,6 +154,7 @@ export const server = http.createServer(async (req, res) => {
         });
       }
 
+      // Login and account creation through Supabase Auth.
       if (["/auth/login", "/auth/signup"].includes(route) && req.method === "POST") {
         const ip = req.socket.remoteAddress;
         const a = attempts.get(ip) || { count: 0, since: Date.now() };
@@ -166,6 +184,7 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 200, { user: userView(result.data.user) });
       }
 
+      // Sign-out invalidates the server session and clears the browser cookie.
       if (route === "/auth/logout" && req.method === "POST") {
         const id = sid(req), session = sessions.get(id);
         if (session) await session.client.auth.signOut({ scope: "local" });
@@ -174,11 +193,13 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true });
       }
 
+      // Restore an account from the browser session on page refresh.
       if (route === "/auth/session" && req.method === "GET") {
         const session = await signedIn(req);
         return json(res, 200, { user: userView(session?.user) });
       }
 
+      // User-specific bookmark and RSVP state stored in relational tables.
       if (route === "/state") {
         const session = await signedIn(req);
         if (!session) return json(res, 401, { error: "Please sign in again." });
@@ -220,6 +241,8 @@ export const server = http.createServer(async (req, res) => {
       return json(res, 404, { error: "Endpoint not found." });
     }
 
+    // Non-API requests serve files from the public directory.
+    // /events is mapped to events.html so it behaves like a dedicated page.
     if (!["GET", "HEAD"].includes(req.method)) return json(res, 405, { error: "Method not allowed." });
     if (url.pathname === "/events" || url.pathname === "/events/") url.pathname = "/events.html";
     const path = resolve(root, "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
