@@ -1,7 +1,11 @@
--- Optional development seed data.
--- Run once in a fresh database; plain INSERT statements would duplicate rows
--- if executed repeatedly. Dates use current_date so the upcoming/past views remain useful.
-INSERT INTO public."Events" ("EventName", "EventCatagory", "EventLocation", "EventDate", "EventTime", "EventDescription") VALUES 
+-- Optional development seed: run ONCE in a fresh project after schema.sql.
+-- Do not run against an existing project. Repeated runs duplicate sample events.
+begin;
+create temporary table gather_seed_input (
+  "EventName" text, "EventCatagory" text, "EventLocation" text,
+  "EventDate" date, "EventTime" time, "EventDescription" text
+) on commit drop;
+insert into gather_seed_input values
 ('Fall social on the lawn', 'Social', 'Maeser Lawn', current_date + 1, '18:00', 'Bring a blanket and meet someone new. Enjoy lawn games, music, and treats as the sun sets over campus.'),
 ('An evening of jazz', 'Arts', 'Music Building', current_date + 3, '19:00', 'An intimate evening of student jazz ensembles. Arrive 15 minutes early; seating is first come, first served.'),
 ('Build something together', 'Career', 'Tanner Building', current_date + 5, '17:30', 'Meet other builders at a collaborative technology workshop. Bring a laptop; beginners are welcome.'),
@@ -13,3 +17,26 @@ INSERT INTO public."Events" ("EventName", "EventCatagory", "EventLocation", "Eve
 ('Meet your next opportunity', 'Career', 'Tanner Building', current_date + 33, '15:00', 'Practice introductions and connect with peers. Bring a résumé if you would like informal feedback.'),
 ('Welcome week mixer', 'Social', 'Maeser Lawn', current_date - 3, '18:00', 'A relaxed start-of-semester mixer with games and treats.'),
 ('Community service afternoon', 'Service', 'Wilkinson Center', current_date - 8, '14:00', 'Students assembled care kits for community partners.');
+
+insert into public."EventCategory" ("EventCatagory")
+select distinct s."EventCatagory" from gather_seed_input s
+where not exists (
+  select 1 from public."EventCategory" c where c."EventCatagory" = s."EventCatagory"
+);
+
+do $$
+declare
+  sample record;
+  event_id bigint;
+begin
+  for sample in select * from gather_seed_input loop
+    insert into public."Events" ("EventName", "EventLocation", "EventDate", "EventTime", "EventDescription")
+    values (sample."EventName", sample."EventLocation", sample."EventDate", sample."EventTime", sample."EventDescription")
+    returning "EventID" into event_id;
+    insert into public."Event_Category_Linking_Table" ("EventID", "EventCatID")
+    select event_id, min("EventCatID") from public."EventCategory"
+    where "EventCatagory" = sample."EventCatagory";
+  end loop;
+end;
+$$;
+commit;

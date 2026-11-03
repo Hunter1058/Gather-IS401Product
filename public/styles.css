@@ -1201,6 +1201,8 @@ footer {
     scroll-behavior: auto !important;
   }
 }
+
+/* Profile avatar for signed-in users */
 .profile-avatar {
   width: 40px;
   height: 40px;
@@ -1216,7 +1218,6 @@ footer {
   cursor: pointer;
 }
 
-
 /* Friendly confirmation message after successful signup */
 .auth-success {
   background: #ecfdf5;
@@ -1227,4 +1228,117 @@ footer {
   margin: 12px 0;
   font-weight: 500;
   line-height: 1.5;
+}
+
+/* Events page: quiet personal actions leave the primary treatment for Share. */
+.event-card .card-body {
+  min-width: 0;
+}
+
+.list .event-card .card-body {
+  display: block;
+}
+
+.event-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.event-card-heading > .row {
+  gap: 8px;
+  min-width: 0;
+}
+
+.event-admission {
+  font-size: 12px;
+}
+
+.event-bookmark,
+.event-rsvp {
+  min-height: 44px;
+  background: var(--surface);
+  color: var(--muted-foreground);
+  box-shadow: none;
+}
+
+.event-bookmark[aria-pressed="true"],
+.event-rsvp[aria-pressed="true"] {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-color: var(--border);
+}
+
+.event-card-heading > .event-bookmark {
+  flex: 0 0 44px;
+  width: 44px;
+  padding: 10px;
+}
+
+.event-card .event-title {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+
+.event-card .event-title:hover {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  box-shadow: none;
+}
+
+.list .event-card .event-card-actions,
+.event-card .event-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.event-card .event-card-actions .event-rsvp {
+  min-height: 44px;
+  padding: 9px 12px;
+}
+
+.event-share-slot {
+  margin-left: auto;
+}
+
+.event-share-slot:empty {
+  display: none;
+}
+
+/* The Share owner can mount a .primary button inside data-event-share-slot. */
+.event-card .event-share-slot > button {
+  min-height: 44px;
+}
+
+@media (max-width: 480px) {
+  .list .event-card {
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .list .event-card .poster {
+    min-height: 56px;
+    height: 56px;
+  }
+
+  .event-card-heading {
+    gap: 6px;
+  }
+
+  .event-card-heading > .row {
+    gap: 4px;
+  }
 }

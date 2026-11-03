@@ -1,5 +1,12 @@
 # Gather-IS401Product
 
+## RSVP and bookmarks update
+
+See [installation, database migration, API and Share handoff](docs/EVENT-PLANS-SETUP.md).
+Existing databases must apply `supabase/migrations/20261102000000_event_plans.sql`
+before running the updated server. Fresh databases can use the updated `schema.sql`.
+
+
 <!-- Maintainer note: Source comments explain each section of server.js and public/. -->
 
 ## Code organization
