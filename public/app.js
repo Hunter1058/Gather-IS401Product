@@ -502,7 +502,24 @@ function renderBase() {
   ]
     .map(([p, n]) => `<button onclick="go('${p}')">${n}</button>`)
     .join("");
-  $("userButton").textContent = data.user ? data.user.name + " ↗" : "Sign in ↗";
+    const userButton = $("userButton");
+
+    if (data.user) {
+      const initials = (data.user.name || data.user.email || "U")
+        .trim()
+        .split(/\s+/)
+        .map(part => part[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase();
+    
+      userButton.textContent = initials;
+      userButton.classList.add("profile-avatar");
+      userButton.title = data.user.name || "My account";
+    } else {
+      userButton.textContent = "Sign in ↗";
+      userButton.classList.remove("profile-avatar");
+    }
   $("app").innerHTML =
     page === "home"
       ? home()
