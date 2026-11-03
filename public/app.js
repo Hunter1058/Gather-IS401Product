@@ -699,14 +699,26 @@ async function boot() {
         data = emptyState();
         events = [];
         render();
-        const [listing, session] = await Promise.all([
-          api("/events"),
-          api("/auth/session"),
-        ]);
-        events = listing.events;
-        categories = [...new Set(events.map((e) => e.category))];
-        data.user = session.user;
-        if (data.user) await loadState();
+        
+const session = await api("/auth/session");
+data.user = session.user;
+
+// Update the navigation before loading events.
+render();
+
+if (data.user) {
+  try {
+    await loadState();
+  } catch (error) {
+    console.error("Unable to load saved user data:", error);
+  }
+}
+
+// Load events separately so errors don't prevent login display.
+const listing = await api("/events");
+events = listing.events;
+categories = [...new Set(events.map((e) => e.category))];
+
       }
     } catch (e) {
       $("app").innerHTML =

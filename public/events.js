@@ -102,14 +102,80 @@ function closeModal() { if($("modal").open)$("modal").close(); }
 function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(event,"detail-poster")}<div class="dialog-body"><span class="tag">${esc(event.category)}${ended(event)?" · Past event":""}</span><h2 style="margin-top:12px">${esc(event.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div><div><span class="muted">Where</span><b>${esc(event.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${event.price?"$"+Number(event.price).toFixed(0):"Free"}</b>${event.food?"Food provided":"Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Campus organizer")}</b>${esc(event.major||"All majors")}</div></div><p>${esc(event.description)}</p><div class="row"><button class="${data.saved.includes(id)?"active":""}" onclick="bookmark('${id}')">${data.saved.includes(id)?icon("bookmark-check")+" Saved":icon("bookmark")+" Save event"}</button>${ended(event)?'<button onclick="closeModal()">Past event</button>':`<button class="primary" onclick="rsvp('${id}')">${data.rsvp.includes(id)?"✓ RSVP’d · Cancel":"RSVP to event"}</button>`}<a class="primary" style="display:inline-block;padding:12px;border-radius:8px;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location+" BYU Provo Utah")}">View location ↗</a></div></div>`); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
+
 async function boot() {
+  // Load the user profile independently of events.
   try {
-    const config=await api("/config"); backendMode=config.mode;
-    if(backendMode=== "supabase") { const [listing,session]=await Promise.all([api("/events"),api("/auth/session")]); events=listing.events.map((event)=>({...event,end:null,club:"Campus organizer",major:"All majors",poster:event.category.toUpperCase(),friends:[]})); data.user=session.user; $("footerMode").textContent=data.user?"Connected to Supabase · Your personal plans":"Connected to Supabase · Sign in to save plans"; if(data.user){const result=await api("/state"); data={...data,...result.state,user:data.user};} $("userButton").textContent=data.user?data.user.name+" ↗":"Sign in ↗"; $("sideUserButton").textContent=data.user?data.user.name+" ↗":"Sign in"; }
-  } catch(error) { $("results").innerHTML=`<div class="empty"><h2>We couldn’t load events.</h2><p>${esc(error.message)}</p><button onclick="boot()">Try again</button></div>`; return; }
-  $("pageTitle").textContent=view=== "calendar"?"Your campus calendar.":"What’s happening at BYU.";
-  renderToolbar(); renderResults();
+    const session = await api("/auth/session");
+    data.user = session.user;
+
+    const userButton = $("userButton");
+
+    if (data.user) {
+      const initials = (data.user.name || data.user.email || "U")
+        .trim()
+        .split(/\s+/)
+        .map(part => part[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase();
+
+      userButton.textContent = initials;
+      userButton.classList.add("profile-avatar");
+      userButton.title = data.user.name || "My account";
+    } else {
+      userButton.textContent = "Sign in ↗";
+      userButton.classList.remove("profile-avatar");
+    }
+
+    $("sideUserButton").textContent = data.user
+      ? data.user.name + " ↗"
+      : "Sign in";
+
+  } catch (error) {
+    console.error("Unable to load user profile:", error);
+  }
+
+  // Load events separately.
+  try {
+    const config = await api("/config");
+    backendMode = config.mode;
+
+    if (backendMode === "supabase") {
+      const listing = await api("/events");
+
+      events = listing.events.map((event) => ({
+        ...event,
+        end: null,
+        club: "Campus organizer",
+        major: "All majors",
+        poster: event.category.toUpperCase(),
+        friends: []
+      }));
+
+      $("footerMode").textContent = data.user
+        ? "Connected to Supabase · Your personal plans"
+        : "Connected to Supabase · Sign in to save plans";
+
+      if (data.user) {
+        const result = await api("/state");
+        data = { ...data, ...result.state, user: data.user };
+      }
+    }
+  } catch (error) {
+    $("results").innerHTML =
+      `<div class="empty"><h2>We couldn’t load events.</h2><p>${esc(error.message)}</p><button onclick="boot()">Try again</button></div>`;
+    return;
+  }
+
+  $("pageTitle").textContent = view === "calendar"
+    ? "Your campus calendar."
+    : "What’s happening at BYU.";
+
+  renderToolbar();
+  renderResults();
 }
+
 $("modal").addEventListener("click",(event)=>{ if(event.target===$("modal")) closeModal(); });
 document.addEventListener("keydown",(event)=>{ if(event.key=== "Escape"&&!$("drawer").hidden)toggleMenu(); });
 boot();
