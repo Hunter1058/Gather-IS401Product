@@ -60,8 +60,15 @@ let page = "home",
   slide = 0,
   paused = matchMedia("(prefers-reduced-motion: reduce)").matches,
   detailId = null;
+// Keep all linked categories available to filters and labels; old fixtures
+// that supply a single category remain compatible.
+function eventCategories(event) {
+  return event.categories?.length ? event.categories : [event.category || "Campus event"];
+}
+function categoryLabel(event) { return eventCategories(event).join(" · "); }
+
 // Derived category values and demo-browser persistence.
-let categories = [...new Set(events.map((e) => e.category))];
+let categories = [...new Set(events.flatMap(eventCategories))];
 function persistDemo() {
   try {
     localStorage.setItem("gather-v1", JSON.stringify(data));
@@ -77,10 +84,12 @@ function toast(s) {
   window.toastTimer = setTimeout(() => ($("toast").textContent = ""), 3500);
 }
 function time(t) {
+  if (!t) return "Time TBA";
   let [h, m] = t.split(":").map(Number);
   return `${h % 12 || 12}${m ? ":" + String(m).padStart(2, "0") : ""} ${h < 12 ? "AM" : "PM"}`;
 }
 function pretty(d, full = false) {
+  if (!d) return "Date TBA";
   return new Date(d + "T12:00:00").toLocaleDateString("en-US", {
     weekday: full ? "long" : undefined,
     month: "short",
@@ -91,7 +100,7 @@ function pretty(d, full = false) {
 function ended(e) {
   return e.ends_at
     ? new Date(e.ends_at) < new Date()
-    : new Date(e.date + "T" + e.end) < new Date();
+    : new Date(e.date + "T" + (e.end || "23:59:59")) < new Date();
 }
 function toggleMenu() {
   const open = $("drawer").hidden;
@@ -120,35 +129,15 @@ function setMode(m) {
   selectedDay = "";
   render();
 }
-function bookmark(id) {
-  if (!requireAccount()) return;
-  data.saved.includes(id)
-    ? (data.saved = data.saved.filter((x) => x !== id))
-    : data.saved.push(id);
-  persist();
-  render();
-  if ($("modal").open && detailId) openEvent(detailId);
-  toast(
-    data.saved.includes(id)
-      ? "Added to your saved events"
-      : "Removed from saved events",
-  );
-}
-function rsvp(id) {
-  if (!requireAccount()) return;
-  data.rsvp.includes(id)
-    ? (data.rsvp = data.rsvp.filter((x) => x !== id))
-    : data.rsvp.push(id);
-  persist();
-  render();
-  openEvent(id);
-  toast(
-    data.rsvp.includes(id)
-      ? backendMode === "demo"
-        ? "You’re on the demo RSVP list"
-        : "Your RSVP has been saved"
-      : "RSVP canceled",
-  );
+function bookmark(id) { return plans.set("bookmark", id); }
+function rsvp(id) { return plans.set("rsvp", id); }
+function refreshPlanControls() {
+  document.querySelectorAll("[data-plan-kind]").forEach(button => {
+    const { planKind, eventId } = button.dataset;
+    button.disabled = plans.busy(planKind, eventId);
+    button.setAttribute("aria-busy", String(button.disabled));
+    button.setAttribute("aria-pressed", String(data[planKind === "bookmark" ? "saved" : "rsvp"].includes(eventId)));
+  });
 }
 function attend(id) {
   if (!requireAccount()) return;
@@ -180,7 +169,7 @@ function listEvents() {
           `${esc(e.name)} ${esc(e.club)} ${esc(e.location)}`
             .toLowerCase()
             .includes(filters.q.toLowerCase())) &&
-        (!filters.category || e.category === filters.category) &&
+        (!filters.category || eventCategories(e).includes(filters.category)) &&
         (!filters.location || e.location === filters.location) &&
         (!filters.club || e.club === filters.club) &&
         (!filters.major ||
@@ -190,13 +179,13 @@ function listEvents() {
         (!filters.to || e.date <= filters.to) &&
         (!filters.food || e.food) &&
         (!filters.free || e.price === 0) &&
-        (!filters.spiritual || e.category === "Spiritual")
+        (!filters.spiritual || eventCategories(e).includes("Spiritual"))
       );
     })
     .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 }
 function card(e) {
-  return `<article class="card">${poster(e)}<div class="card-body"><div><div class="row between"><span class="tag">${esc(e.category)}</span><span class="muted" style="font-size:12px">${e.price ? "$" + Number(e.price).toFixed(0) : "Free"}${e.food ? " · Food provided" : ""}</span></div><h3>${esc(e.name)}</h3><div class="metadata"><span>${icon("clock")} ${pretty(e.date)} · ${time(e.start)}–${time(e.end)}</span><span>${icon("map-pin")} ${esc(e.location)}</span></div>${e.friends.some((f) => data.friends.includes(f)) ? '<small class="muted">Friends interested · ' + esc(e.friends.filter((f) => data.friends.includes(f)).join(", ")) + "</small>" : ""}</div><div class="card-actions"><button onclick="openEvent('${e.id}')">${ended(e) ? "View & reflect" : "View event"} ↗</button><button class="save ${data.saved.includes(e.id) ? "active" : ""}" aria-pressed="${data.saved.includes(e.id)}" onclick="bookmark('${e.id}')">${data.saved.includes(e.id) ? icon("bookmark-check") + " Saved" : icon("bookmark") + " Save"}</button></div></div></article>`;
+  return `<article class="card">${poster(e)}<div class="card-body"><div><div class="row between"><span class="tag">${esc(categoryLabel(e))}</span><span class="muted" style="font-size:12px">${e.price ? "$" + Number(e.price).toFixed(0) : "Free"}${e.food ? " · Food provided" : ""}</span></div><h3>${esc(e.name)}</h3><div class="metadata"><span>${icon("clock")} ${pretty(e.date)} · ${time(e.start)}${e.end ? "–" + time(e.end) : ""}</span><span>${icon("map-pin")} ${esc(e.location)}</span></div>${e.friends.some((f) => data.friends.includes(f)) ? '<small class="muted">Friends interested · ' + esc(e.friends.filter((f) => data.friends.includes(f)).join(", ")) + "</small>" : ""}</div><div class="card-actions"><button onclick="openEvent('${e.id}')">${ended(e) ? "View & reflect" : "View event"} ↗</button><button class="save ${data.saved.includes(e.id) ? "active" : ""}" aria-pressed="${data.saved.includes(e.id)}" data-plan-kind="bookmark" data-event-id="${e.id}" onclick="bookmark('${e.id}')">${data.saved.includes(e.id) ? icon("bookmark-check") + " Saved" : icon("bookmark") + " Save"}</button></div></div></article>`;
 }
 function empty() {
   return `<div class="empty"><h3>No upcoming events match current filters</h3><p class="muted">Try a different date, clear your filters, or explore all events.</p><button onclick="clearFilters()">Clear filters</button> <button onclick="mode='upcoming';clearFilters()">Explore events</button></div>`;
@@ -243,6 +232,7 @@ function updateResults() {
   if ($("resultCount"))
     $("resultCount").textContent = listEvents().length + " events";
   icons();
+  refreshPlanControls();
 }
 function moveSlide(n) {
   slide = (slide + n + 3) % 3;
@@ -251,6 +241,7 @@ function moveSlide(n) {
 function renderHero() {
   if ($("heroHost")) $("heroHost").innerHTML = hero();
   icons();
+  refreshPlanControls();
 }
 setInterval(() => {
   if (
@@ -320,6 +311,7 @@ function showModal(html, label) {
   $("modal").setAttribute("aria-label", label);
   if (!$("modal").open) $("modal").showModal();
   icons();
+  refreshPlanControls();
 }
 function openEvent(id) {
   let e = events.find((e) => e.id === id);
@@ -332,7 +324,7 @@ function openEvent(id) {
   }
   detailId = id;
   showModal(
-    `<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(e, "detail-poster")}<div class="dialog-body"><span class="tag">${esc(e.category)}${ended(e) ? " · Past event" : ""}</span><h2 style="margin-top:12px">${esc(e.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(e.date, true)}</b>${time(e.start)}–${time(e.end)}</div><div><span class="muted">Where</span><b>${esc(e.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${e.price ? "$" + Number(e.price).toFixed(0) : "Free"}</b>${e.food ? "Food provided" : "Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(e.club)}</b>${esc(e.major)}</div></div><p>${esc(e.description)}</p><details><summary>More information</summary><p>Sample listing for the digital mockup. ${e.food ? "Food is included; ask the organizer about dietary options." : "Bring water and any materials noted above."} Visit the organizer’s site to verify real event details.</p><a href="https://www.byu.edu/" target="_blank" rel="noopener">BYU website ↗</a></details><div class="notice">${esc(e.friends.filter((f) => data.friends.includes(f)).join(", ") || "No friends yet")}${e.friends.some((f) => data.friends.includes(f)) ? " interested · demo friend activity" : ""}</div><div class="row"><button class="${data.saved.includes(id) ? "active" : ""}" onclick="bookmark('${id}')">${data.saved.includes(id) ? icon("bookmark-check") + " Saved" : icon("bookmark") + " Save event"}</button>${ended(e) ? `<button onclick="attend('${id}')">${data.attended.includes(id) ? "✓ Attended" : "Mark attended"}</button>${data.saved.includes(id) || data.attended.includes(id) ? `<button class="primary" onclick="survey('${id}')">${data.surveys[id] ? "Edit reflection" : "Rate this event"}</button>` : ""}` : `<button class="primary" onclick="rsvp('${id}')">${data.rsvp.includes(id) ? "✓ RSVP’d · Cancel" : "RSVP to event"}</button>`}<button onclick="shareEvent('${id}')">Share ↗</button><button onclick="eventMap('${id}')">View location</button></div>${
+    `<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(e, "detail-poster")}<div class="dialog-body"><span class="tag">${esc(categoryLabel(e))}${ended(e) ? " · Past event" : ""}</span><h2 style="margin-top:12px">${esc(e.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(e.date, true)}</b>${time(e.start)}${e.end ? "–" + time(e.end) : ""}</div><div><span class="muted">Where</span><b>${esc(e.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${e.price ? "$" + Number(e.price).toFixed(0) : "Free"}</b>${e.food ? "Food provided" : "Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(e.club)}</b>${esc(e.major)}</div></div><p>${esc(e.description)}</p><details><summary>More information</summary><p>Sample listing for the digital mockup. ${e.food ? "Food is included; ask the organizer about dietary options." : "Bring water and any materials noted above."} Visit the organizer’s site to verify real event details.</p><a href="https://www.byu.edu/" target="_blank" rel="noopener">BYU website ↗</a></details><div class="notice">${esc(e.friends.filter((f) => data.friends.includes(f)).join(", ") || "No friends yet")}${e.friends.some((f) => data.friends.includes(f)) ? " interested · demo friend activity" : ""}</div><div class="row"><button class="${data.saved.includes(id) ? "active" : ""}" data-plan-kind="bookmark" data-event-id="${id}" onclick="bookmark('${id}')">${data.saved.includes(id) ? icon("bookmark-check") + " Saved" : icon("bookmark") + " Save event"}</button>${ended(e) ? `<button onclick="attend('${id}')">${data.attended.includes(id) ? "✓ Attended" : "Mark attended"}</button>${data.saved.includes(id) || data.attended.includes(id) ? `<button class="primary" onclick="survey('${id}')">${data.surveys[id] ? "Edit reflection" : "Rate this event"}</button>` : ""}` : `<button class="primary" data-plan-kind="rsvp" data-event-id="${id}" onclick="rsvp('${id}')">${data.rsvp.includes(id) ? "✓ RSVP’d · Cancel" : "RSVP to event"}</button>`}<button onclick="shareEvent('${id}')">Share ↗</button><button onclick="eventMap('${id}')">View location</button></div>${
       !ended(e)
         ? `<label>Event reminder<select onchange="remind('${id}',this.value)">${[
             ["", "No reminder"],
@@ -463,7 +455,7 @@ function saveSurvey(ev, id) {
 }
 // Friends and interests page rendered inside the current shell.
 function friendsPage() {
-  return `<div class="eyebrow">Better with company</div><h1>Your people. Your interests.</h1><p class="muted">Keep a list of friends and discover what you have in common.</p><div class="notice">Demo profiles and activity are fictional. Adding a friend here does not send an invitation.</div><div class="grid">${["Emma", "Noah", "Sofia", "Liam", "Olivia", "Ethan"].map((n, i) => `<div class="card friend"><span class="avatar">${n[0]}</span><div class="info"><h3>${n}</h3><p class="muted">${["Social & service", "Sports & technology", "Arts & culture"][i % 3]}</p></div><button onclick="toggleFriend('${n}')">${data.friends.includes(n) ? "✓ Added · Remove" : "+ Add friend"}</button></div>`).join("")}</div><div class="prefs"><h2>What are you into?</h2><p class="muted">These interests shape your home page recommendations.</p><div class="chips">${categories.map((c) => `<button class="${data.interests.includes(c) ? "active" : ""}" aria-pressed="${data.interests.includes(c)}" onclick="toggleInterest('${c}')">${c}</button>`).join("")}</div></div>`;
+  return `<div class="eyebrow">Better with company</div><h1>Your people. Your interests.</h1><p class="muted">Keep a list of friends and discover what you have in common.</p><div class="notice">Demo profiles and activity are fictional. Adding a friend here does not send an invitation.</div><div class="grid">${["Emma", "Noah", "Sofia", "Liam", "Olivia", "Ethan"].map((n, i) => `<div class="card friend"><span class="avatar">${n[0]}</span><div class="info"><h3>${n}</h3><p class="muted">${["Social & service", "Sports & technology", "Arts & culture"][i % 3]}</p></div><button onclick="toggleFriend('${n}')">${data.friends.includes(n) ? "✓ Added · Remove" : "+ Add friend"}</button></div>`).join("")}</div><div class="prefs"><h2>What are you into?</h2><p class="muted">These interests shape your home page recommendations.</p><div class="chips">${categories.map((c) => `<button class="${data.interests.includes(c) ? "active" : ""}" aria-pressed="${data.interests.includes(c)}" onclick="toggleInterest(${esc(JSON.stringify(c))})">${esc(c)}</button>`).join("")}</div></div>`;
 }
 function toggleFriend(n) {
   if (!requireAccount()) return;
@@ -558,7 +550,7 @@ function hero() {
 function home() {
   let upcoming = events.filter((e) => !ended(e)),
     recommended = upcoming
-      .filter((e) => data.interests.includes(e.category))
+      .filter((e) => eventCategories(e).some(category => data.interests.includes(category)))
       .slice(0, 4);
   if (!recommended.length) recommended = upcoming.slice(0, 4);
   let saved = upcoming.filter((e) => data.saved.includes(e.id)).slice(0, 3);
@@ -580,11 +572,8 @@ function home() {
 
 /* API integration. File previews are demo-only; Node enables Supabase mode. */
 let backendMode = "demo",
-  syncTimer,
-  syncChain = Promise.resolve(),
   syncFailed = false,
   booting = true,
-  pendingSaves = 0,
   stateReady = true;
 const emptyState = () => ({
   saved: [],
@@ -597,11 +586,6 @@ const emptyState = () => ({
   user: null,
   accounts: [],
 });
-function statePayload() {
-  const { saved, rsvp, attended, reminders, surveys, friends, interests } =
-    data;
-  return { saved, rsvp, attended, reminders, surveys, friends, interests };
-}
 async function api(path, options = {}) {
   const res = await fetch("/api" + path, {
     credentials: "same-origin",
@@ -613,27 +597,10 @@ async function api(path, options = {}) {
   return body;
 }
 function persist() {
-  if (backendMode === "demo") {
-    persistDemo();
-    return;
-  }
-  if (!data.user || !stateReady) return;
-  const payload = statePayload();
-  pendingSaves++;
-  syncChain = syncChain
-    .catch(() => {})
-    .then(() => api("/state", { method: "PUT", body: JSON.stringify(payload) }))
-    .then(() => {
-      syncFailed = false;
-      $("footerMode").textContent = "Connected · Your plans are synced";
-    })
-    .catch(() => {
-      syncFailed = true;
-      $("footerMode").innerHTML =
-        'Changes are not synced. <button onclick="persist()">Retry saving</button>';
-      toast("Could not sync your plans. Use Retry saving below.");
-    })
-    .finally(() => pendingSaves--);
+  if (backendMode === "demo") { persistDemo(); return; }
+  // These legacy prototype preferences have no database tables yet. In
+  // particular, they must never rewrite bookmarks/RSVPs as a side effect.
+  toast("This prototype preference is available for this visit only.");
 }
 function requireAccount() {
   if (backendMode !== "supabase") return true;
@@ -653,6 +620,7 @@ function requireAccount() {
 function render() {
   renderBase();
   icons();
+  refreshPlanControls();
   if ($("footerMode") && !syncFailed)
     $("footerMode").textContent =
       backendMode === "demo"
@@ -664,6 +632,7 @@ function render() {
 async function loadState() {
   stateReady = false;
   const result = await api("/state");
+  if (result.accountId !== data.user.id) throw Error("Your account changed. Reload to load its plans.");
   data = { ...emptyState(), ...result.state, user: data.user };
   stateReady = true;
 }
@@ -673,7 +642,10 @@ async function boot() {
     location.replace("/" + legacyPage);
     return;
   }
-  if (["saved", "friends"].includes(legacyPage)) page = legacyPage;
+ if (["saved", "friends"].includes(legacyPage)) {
+  page = legacyPage;
+  mode = legacyPage === "saved" ? "saved" : "upcoming";
+}
   if (location.protocol !== "file:") {
     try {
       const config = await api("/config");
@@ -687,7 +659,7 @@ async function boot() {
           api("/auth/session"),
         ]);
         events = listing.events;
-        categories = [...new Set(events.map((e) => e.category))];
+        categories = [...new Set(events.flatMap(eventCategories))];
         data.user = session.user;
         if (data.user) await loadState();
       }
@@ -709,12 +681,20 @@ window.addEventListener("hashchange", () => {
   else if (["saved", "friends"].includes(target)) go(target);
 });
 window.addEventListener("beforeunload", (e) => {
-  if (backendMode === "supabase" && (pendingSaves || syncFailed)) {
+  if (backendMode === "supabase" && (plans.hasPending() || syncFailed)) {
     /* Browsers may warn only after user interaction. */ e.preventDefault();
     e.returnValue = "";
   }
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("drawer").hidden) toggleMenu();
+});
+const plans = window.GatherPlans.create({
+  request: api, state: () => data, isDemo: () => backendMode === "demo",
+  requireAccount, notify: toast, persistDemo,
+  render: () => {
+    render();
+    if ($("modal").open && detailId) openEvent(detailId);
+  },
 });
 boot();

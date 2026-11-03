@@ -28,17 +28,26 @@ let filtersOpen = false;
 let month = new Date(today.getFullYear(), today.getMonth(), 1);
 let selectedDay = "";
 let backendMode = "demo";
+let stateReady = false;
+let detailId = null;
+
+// Keep all linked categories available to filters and labels; old fixtures
+// that supply a single category remain compatible.
+function eventCategories(event) {
+  return event.categories?.length ? event.categories : [event.category || "Campus event"];
+}
+function categoryLabel(event) { return eventCategories(event).join(" · "); }
 
 // Presentation helpers convert database values into readable text and icons.
-function time(value) { const [h,m] = value.split(":").map(Number); return `${h%12||12}${m?":"+String(m).padStart(2,"0"):""} ${h<12?"AM":"PM"}`; }
-function pretty(value, full=false) { return new Date(value+"T12:00:00").toLocaleDateString("en-US", { weekday:full?"long":undefined, month:"short", day:"numeric", year:full?"numeric":undefined }); }
+function time(value) { if (!value) return "Time TBA"; const [h,m] = value.split(":").map(Number); return `${h%12||12}${m?":"+String(m).padStart(2,"0"):""} ${h<12?"AM":"PM"}`; }
+function pretty(value, full=false) { if (!value) return "Date TBA"; return new Date(value+"T12:00:00").toLocaleDateString("en-US", { weekday:full?"long":undefined, month:"short", day:"numeric", year:full?"numeric":undefined }); }
 function ended(event) { return !event.end ? new Date(event.date+"T23:59:59") < new Date() : new Date(event.date+"T"+event.end) < new Date(); }
 function icon(name) { return `<i data-lucide="${name}" aria-hidden="true"></i>`; }
 function icons() { window.lucide?.createIcons(); }
 function toast(message) { const el=$("toast"); el.textContent=message; clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.textContent="",3500); }
 function categoryClass(event) { return "category-"+({ Social:"social", Arts:"arts", Culture:"culture", Service:"service", Spiritual:"spiritual" }[event.category]||"primary"); }
 function categoryIcon(event) { return ({ Social:"party-popper", Arts:"music-2", Career:"lightbulb", Service:"heart-handshake", Sports:"trophy", Culture:"globe-2", Spiritual:"sun" }[event.category]||"calendar-days"); }
-function poster(event, extra="") { return `<div class="poster ${categoryClass(event)} ${extra}" role="img" aria-label="Flyer for ${esc(event.name)}"><span class="shape">${icon(categoryIcon(event))}</span><small>${esc(event.club)} · ${pretty(event.date)}</small><strong>${esc(event.poster||event.category.toUpperCase())}</strong></div>`; }
+function poster(event, extra="") { return `<div class="poster ${categoryClass(event)} ${extra}" role="img" aria-label="Flyer for ${esc(event.name)}"><span class="shape">${icon(categoryIcon(event))}</span><small>${esc(event.club)} · ${pretty(event.date)}</small><strong>${esc(event.poster||categoryLabel(event).toUpperCase())}</strong></div>`; }
 
 // Server communication: API responses use JSON and session cookies.
 async function api(path, options={}) {
@@ -47,12 +56,16 @@ async function api(path, options={}) {
   if (!response.ok) throw Error(body.error||"Request failed.");
   return body;
 }
-function persist() {
-  if (backendMode === "demo") { try { localStorage.setItem("gather-events-v1",JSON.stringify(data)); } catch {} return; }
-  if (!data.user) return;
-  api("/state", { method:"PUT", body:JSON.stringify({ saved:data.saved, rsvp:data.rsvp, attended:[], reminders:{}, surveys:{}, friends:data.friends, interests:["Social","Arts"] }) }).catch(()=>toast("Could not sync your saved plans."));
+function persistDemo() {
+  try { localStorage.setItem("gather-events-v1", JSON.stringify(data)); }
+  catch { toast("Browser storage is unavailable; demo changes last for this visit."); }
 }
-function requireAccount() { if (backendMode === "demo") return true; if (!data.user) { closeModal(); location.assign("/login"); toast("Sign in to save your plans."); return false; } return true; }
+function requireAccount() {
+  if (backendMode === "demo") return true;
+  if (!data.user) { closeModal(); location.assign("/login"); return false; }
+  if (!stateReady) { toast("Your plans have not loaded. Reload to try again."); return false; }
+  return true;
+}
 function toggleMenu() { const open=$("drawer").hidden; $("drawer").hidden=!open; $("menuButton").setAttribute("aria-expanded",String(open)); }
 
 // Filtering and search: the filters object describes the current query.
@@ -63,25 +76,64 @@ function filteredEvents() {
   return events.filter((event) => {
     const past=ended(event);
     const allowed=mode=== "past" ? past && data.saved.includes(event.id) : mode=== "saved" ? data.saved.includes(event.id)&&!past : mode=== "savedPast" ? data.saved.includes(event.id)&&past : mode=== "rsvp" ? data.rsvp.includes(event.id)&&!past : !past;
-    return allowed && (!filters.q || `${event.name} ${event.club||""} ${event.location}`.toLowerCase().includes(filters.q.toLowerCase())) && (!filters.category||event.category===filters.category) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.food||event.food) && (!filters.free||event.price===0) && (!filters.spiritual||event.category=== "Spiritual");
-  }).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+    return allowed && (!filters.q || `${event.name} ${event.club||""} ${event.location}`.toLowerCase().includes(filters.q.toLowerCase())) && (!filters.category||eventCategories(event).includes(filters.category)) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.food||event.food) && (!filters.free||event.price===0) && (!filters.spiritual||eventCategories(event).includes("Spiritual"));
+  }).sort((a,b)=>`${a.date || "9999-12-31"}${a.start || ""}`.localeCompare(`${b.date || "9999-12-31"}${b.start || ""}`));
 }
 function options(values, current) { return `<option value="">All</option>`+values.map((value)=>`<option ${value===current?"selected":""}>${esc(value)}</option>`).join(""); }
 function filterSelect(label, keyName, values) { return `<label>${label}<select onchange="setFilter('${keyName}',this.value)">${options(values,filters[keyName])}</select></label>`; }
 function renderToolbar() {
-  const categoryValues=[...new Set(events.map((e)=>e.category))].sort();
+  const categoryValues=[...new Set(events.flatMap(eventCategories))].sort();
   $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["saved","Bookmarked"],["rsvp","RSVP’d"],["past","Past events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${filterSelect("Category / type","category",categoryValues)}${filterSelect("Location","location",[...new Set(events.map((e)=>e.location))])}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["food","Has food"],["free","Free events"],["spiritual","Spiritual"]].map(([keyName,label])=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
   icons();
 }
 // Display switching: toggling changes the URL as well as the rendered page.
 function toggleView() { view=view=== "calendar"?"list":"calendar"; history.replaceState(null,"",view=== "calendar"?"/events?view=calendar":"/events"); $("pageTitle").textContent=view=== "calendar"?"Your campus calendar.":"What’s happening at BYU."; renderResults(); }
 
-// Personal planning actions update browser state and sync in Supabase mode.
-function bookmark(id) { if(!requireAccount())return; data.saved.includes(id)?data.saved=data.saved.filter((x)=>x!==id):data.saved.push(id); persist(); renderResults(); closeModal(); toast(data.saved.includes(id)?"Added to your saved events":"Removed from saved events"); }
-function rsvp(id) { if(!requireAccount())return; data.rsvp.includes(id)?data.rsvp=data.rsvp.filter((x)=>x!==id):data.rsvp.push(id); persist(); renderResults(); openEvent(id); toast(data.rsvp.includes(id)?"Your RSVP has been saved":"RSVP canceled"); }
+// Both list and modal controls use the same per-event persistence controller.
+function bookmark(id) { return plans.set("bookmark", id); }
+function rsvp(id) { return plans.set("rsvp", id); }
+function planButton(kind, event, compact = false) {
+  const saved = kind === "bookmark";
+  const selected = data[saved ? "saved" : "rsvp"].includes(event.id);
+  const pending = plans.busy(kind, event.id);
+  const unavailable = !saved && ended(event) && !selected;
+  const label = saved
+    ? `${selected ? "Remove bookmark for" : "Bookmark"} ${event.name}`
+    : `${selected ? "Cancel RSVP for" : "RSVP to"} ${event.name}`;
+  return `<button type="button" class="${saved ? "event-bookmark" : "event-rsvp"}"
+    data-plan-kind="${kind}" data-event-id="${esc(event.id)}"
+    aria-label="${esc(label)}" title="${esc(label)}" aria-pressed="${selected}"
+    aria-busy="${pending}" ${pending || unavailable ? "disabled" : ""}
+    onclick="${saved ? "bookmark" : "rsvp"}('${event.id}')">
+    ${icon(saved ? selected ? "bookmark-check" : "bookmark" : selected ? "check" : "user-check")}
+    ${saved && compact ? "" : `<span>${pending ? "Saving…" : saved ? selected ? "Saved" : "Save" : unavailable ? "Event ended" : selected ? "Going" : "Going?"}</span>`}
+  </button>`;
+}
 
-// Rendering helpers build event cards, the calendar grid, and detail dialogs.
-function card(event) { return `<article class="card">${poster(event)}<div class="card-body"><div><div class="row between"><span class="tag">${esc(event.category)}</span><span class="muted" style="font-size:12px">${event.price?"$"+Number(event.price).toFixed(0):"Free"}${event.food?" · Food provided":""}</span></div><h3>${esc(event.name)}</h3><div class="metadata"><span>${icon("clock")} ${pretty(event.date)} · ${time(event.start)}${event.end?"–"+time(event.end):""}</span><span>${icon("map-pin")} ${esc(event.location)}</span></div></div><div class="card-actions"><button onclick="openEvent('${event.id}')">${ended(event)?"View event":"View event"} ↗</button><button class="save ${data.saved.includes(event.id)?"active":""}" aria-pressed="${data.saved.includes(event.id)}" onclick="bookmark('${event.id}')">${data.saved.includes(event.id)?icon("bookmark-check")+" Saved":icon("bookmark")+" Save"}</button></div></div></article>`; }
+// Secondary controls use soft surfaces; the empty slot is for the team's future
+// primary Share control. No Share button or Share behavior is created here.
+function card(event) {
+  return `<article class="card event-card" data-event-id="${esc(event.id)}">
+    ${poster(event)}
+    <div class="card-body">
+      <div class="event-card-heading">
+        <div class="row"><span class="tag">${esc(categoryLabel(event))}</span>
+          <span class="event-admission muted">${event.price ? "$" + Number(event.price).toFixed(0) : "Free"}${event.food ? " · Food provided" : ""}</span>
+        </div>
+        ${planButton("bookmark", event, true)}
+      </div>
+      <h3><button type="button" class="event-title" onclick="openEvent('${event.id}')" aria-label="View details for ${esc(event.name)}">${esc(event.name)}</button></h3>
+      <div class="metadata">
+        <span>${icon("clock")} ${pretty(event.date)} · ${time(event.start)}${event.end ? "–" + time(event.end) : ""}</span>
+        <span>${icon("map-pin")} ${esc(event.location)}</span>
+      </div>
+      <div class="card-actions event-card-actions">
+        ${planButton("rsvp", event)}
+        <div class="event-share-slot" data-event-share-slot="${esc(event.id)}"></div>
+      </div>
+    </div>
+  </article>`;
+}
 function calendar(eventsToShow) {
   const year=month.getFullYear(), monthIndex=month.getMonth();
   const first=new Date(year,monthIndex,1).getDay(), days=new Date(year,monthIndex+1,0).getDate(), cells=[];
@@ -98,18 +150,45 @@ function renderResults() {
 }
 
 function showModal(html) { $("modal").innerHTML=html; if(!$("modal").open)$("modal").showModal(); icons(); }
-function closeModal() { if($("modal").open)$("modal").close(); }
-function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(event,"detail-poster")}<div class="dialog-body"><span class="tag">${esc(event.category)}${ended(event)?" · Past event":""}</span><h2 style="margin-top:12px">${esc(event.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div><div><span class="muted">Where</span><b>${esc(event.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${event.price?"$"+Number(event.price).toFixed(0):"Free"}</b>${event.food?"Food provided":"Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Campus organizer")}</b>${esc(event.major||"All majors")}</div></div><p>${esc(event.description)}</p><div class="row"><button class="${data.saved.includes(id)?"active":""}" onclick="bookmark('${id}')">${data.saved.includes(id)?icon("bookmark-check")+" Saved":icon("bookmark")+" Save event"}</button>${ended(event)?'<button onclick="closeModal()">Past event</button>':`<button class="primary" onclick="rsvp('${id}')">${data.rsvp.includes(id)?"✓ RSVP’d · Cancel":"RSVP to event"}</button>`}<a class="primary" style="display:inline-block;padding:12px;border-radius:8px;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location+" BYU Provo Utah")}">View location ↗</a></div></div>`); }
+function closeModal() { if($("modal").open)$("modal").close(); detailId = null; }
+function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(event,"detail-poster")}<div class="dialog-body"><span class="tag">${esc(categoryLabel(event))}${ended(event)?" · Past event":""}</span><h2 style="margin-top:12px">${esc(event.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div><div><span class="muted">Where</span><b>${esc(event.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${event.price?"$"+Number(event.price).toFixed(0):"Free"}</b>${event.food?"Food provided":"Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Campus organizer")}</b>${esc(event.major||"All majors")}</div></div><p>${esc(event.description)}</p><div class="row">${planButton("bookmark", event)}${planButton("rsvp", event)}<a class="primary" style="display:inline-block;padding:12px;border-radius:8px;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location+" BYU Provo Utah")}">View location ↗</a></div></div>`); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
 async function boot() {
   try {
     const config=await api("/config"); backendMode=config.mode;
-    if(backendMode=== "supabase") { const [listing,session]=await Promise.all([api("/events"),api("/auth/session")]); events=listing.events.map((event)=>({...event,end:null,club:"Campus organizer",major:"All majors",poster:event.category.toUpperCase(),friends:[]})); data.user=session.user; $("footerMode").textContent=data.user?"Connected to Supabase · Your personal plans":"Connected to Supabase · Sign in to save plans"; if(data.user){const result=await api("/state"); data={...data,...result.state,user:data.user};} $("userButton").textContent=data.user?data.user.name+" ↗":"Sign in ↗"; $("sideUserButton").textContent=data.user?data.user.name+" ↗":"Sign in"; }
+    if (backendMode === "supabase") {
+      // Never import demo/local or a previous account's preferences into a login.
+      data = { saved: [], rsvp: [], user: null, friends: [] };
+      stateReady = false;
+      const [listing, session] = await Promise.all([api("/events"), api("/auth/session")]);
+      events = listing.events.map(event => ({ ...event, poster: categoryLabel(event).toUpperCase() }));
+      data.user = session.user;
+      if (data.user) {
+        const result = await api("/state");
+        if (result.accountId !== session.user.id) throw Error("Your account changed. Reload to load its plans.");
+        data = { ...data, ...result.state, user: session.user };
+      }
+      stateReady = true;
+      $("footerMode").textContent = data.user ? "Connected to Supabase · Your personal plans" : "Connected to Supabase · Sign in to save plans";
+      $("userButton").textContent = data.user ? data.user.name + " ↗" : "Sign in ↗";
+      $("sideUserButton").textContent = data.user ? data.user.name + " ↗" : "Sign in";
+    } else stateReady = true;
   } catch(error) { $("results").innerHTML=`<div class="empty"><h2>We couldn’t load events.</h2><p>${esc(error.message)}</p><button onclick="boot()">Try again</button></div>`; return; }
   $("pageTitle").textContent=view=== "calendar"?"Your campus calendar.":"What’s happening at BYU.";
   renderToolbar(); renderResults();
 }
 $("modal").addEventListener("click",(event)=>{ if(event.target===$("modal")) closeModal(); });
 document.addEventListener("keydown",(event)=>{ if(event.key=== "Escape"&&!$("drawer").hidden)toggleMenu(); });
+const plans = window.GatherPlans.create({
+  request: api, state: () => data, isDemo: () => backendMode === "demo",
+  requireAccount, notify: toast, persistDemo,
+  render: () => {
+    renderResults();
+    if ($("modal").open && detailId) openEvent(detailId);
+  },
+});
+window.addEventListener("beforeunload", event => {
+  if (plans.hasPending()) { event.preventDefault(); event.returnValue = ""; }
+});
 boot();

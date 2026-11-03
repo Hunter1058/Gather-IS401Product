@@ -12,6 +12,7 @@ import { resolve, extname } from "node:path";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
+import { planInput, profileId, readPlans, writePlan } from "./lib/event-plans.js";
 
 // Server and Supabase configuration. Supabase credentials must be provided together.
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "public");
@@ -131,7 +132,7 @@ export const server = http.createServer(async (req, res) => {
       if (route === "/events" && req.method === "GET") {
         const { data, error } = await publicClient
           .from("Events")
-          .select("EventID, EventName, EventCatagory, EventLocation, EventDate, EventTime, EventDescription")
+          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, categoryLinks:Event_Category_Linking_Table(category:EventCategory(EventCatagory))")
           .order("EventDate", { ascending: true })
           .limit(500);
         
@@ -139,18 +140,32 @@ export const server = http.createServer(async (req, res) => {
         
         // Map relational data back to the JSON structure the frontend expects
         return json(res, 200, {
-          events: data.map((r) => ({
-            id: String(r.EventID),
-            name: r.EventName,
-            category: r.EventCatagory,
-            location: r.EventLocation,
-            date: r.EventDate,
-            start: r.EventTime,
-            description: r.EventDescription,
-            friends: [],
-            price: 0,
-            food: false
-          })),
+          events: data.map((r) => {
+            // PostgREST can return an object while EventID alone is the link PK,
+            // or an array after the team enables multiple categories per event.
+            const links = Array.isArray(r.categoryLinks) ? r.categoryLinks
+              : r.categoryLinks ? [r.categoryLinks] : [];
+            const categories = [...new Set(links.map(link => link.category?.EventCatagory)
+              .filter(value => typeof value === "string" && value.trim())
+              .map(value => value.trim()))].sort();
+            return {
+              id: String(r.EventID),
+              name: r.EventName || "Campus event",
+              category: categories[0] || "Campus event",
+              categories,
+              location: r.EventLocation,
+              date: r.EventDate,
+              start: r.EventTime,
+              description: r.EventDescription,
+              end: null,
+              club: "Campus organizer",
+              major: "All majors",
+              poster: categories.join(" · ") || "Campus event",
+              friends: [],
+              price: 0,
+              food: false
+            };
+          }),
         });
       }
 
@@ -199,44 +214,34 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 200, { user: userView(session?.user) });
       }
 
-      // User-specific bookmark and RSVP state stored in relational tables.
+      // Read-only aggregate for the existing Saved/home pages.
       if (route === "/state") {
         const session = await signedIn(req);
         if (!session) return json(res, 401, { error: "Please sign in again." });
-        
-        if (req.method === "GET") {
-          // Fetch from relational tables instead of single JSON column
-          const { data: bData } = await session.client.from("Bookmark").select("EventID").eq("UserID", session.user.id);
-          const { data: rData } = await session.client.from("RSVP").select("EventID").eq("UserID", session.user.id);
-          
-          return json(res, 200, { 
-            state: {
-              saved: bData ? bData.map(b => String(b.EventID)) : [],
-              rsvp: rData ? rData.map(r => String(r.EventID)) : [],
-              attended: [], friends: [], interests: [], reminders: {}, surveys: {}
-            } 
-          });
+        if (req.method !== "GET") {
+          res.setHeader("Allow", "GET");
+          return json(res, 405, { error: "Bulk plan writes are no longer supported. Reload Gather and use the event buttons." });
         }
-        
-        if (req.method === "PUT") {
-          const input = await body(req);
-          
-          // Overwrite Bookmarks
-          await session.client.from("Bookmark").delete().eq("UserID", session.user.id);
-          if (Array.isArray(input.saved) && input.saved.length > 0) {
-            const bInserts = input.saved.map(id => ({ UserID: session.user.id, EventID: parseInt(id) }));
-            await session.client.from("Bookmark").insert(bInserts);
-          }
+        const owner = await profileId(session.client, session.user.id);
+        return json(res, 200, { accountId: session.user.id, state: await readPlans(session.client, owner) });
+      }
 
-          // Overwrite RSVPs
-          await session.client.from("RSVP").delete().eq("UserID", session.user.id);
-          if (Array.isArray(input.rsvp) && input.rsvp.length > 0) {
-            const rInserts = input.rsvp.map(id => ({ UserID: session.user.id, EventID: parseInt(id), RSVPGoing: true }));
-            await session.client.from("RSVP").insert(rInserts);
-          }
-
-          return json(res, 200, { ok: true });
+      // Idempotent per-event writes cannot erase plans for unrelated events.
+      const planRoute = /^\/events\/([^/]+)\/(bookmark|rsvp)$/.exec(route);
+      if (planRoute) {
+        if (req.method !== "PUT") {
+          res.setHeader("Allow", "PUT");
+          return json(res, 405, { error: "Use PUT to update this event." });
         }
+        const session = await signedIn(req);
+        if (!session) return json(res, 401, { error: "Sign in to save your plans." });
+        if (req.headers["x-gather-account"] && req.headers["x-gather-account"] !== session.user.id)
+          return json(res, 409, { error: "Your account changed in another tab. Reload before saving." });
+        const [, eventId, kind] = planRoute;
+        const field = kind === "bookmark" ? "bookmarked" : "going";
+        const value = planInput(eventId, await body(req), field);
+        const owner = await profileId(session.client, session.user.id);
+        return json(res, 200, await writePlan(session.client, owner, eventId, kind, value));
       }
       return json(res, 404, { error: "Endpoint not found." });
     }
