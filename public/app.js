@@ -1,3 +1,4 @@
+
 "use strict";
 
 /*
@@ -23,6 +24,7 @@ const today = new Date();
 today.setHours(0, 0, 0, 0);
 const key = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 // Runtime data starts empty; database mode loads events and account state on boot.
 let events = [];
 let data = {
@@ -40,6 +42,7 @@ try {
   let old = JSON.parse(localStorage.getItem("gather-v1"));
   if (old) data = { ...data, ...old };
 } catch (e) {}
+
 let page = "home",
   mode = "upcoming",
   filters = {
@@ -60,6 +63,7 @@ let page = "home",
   slide = 0,
   paused = matchMedia("(prefers-reduced-motion: reduce)").matches,
   detailId = null;
+
 // Keep all linked categories available to filters and labels; old fixtures
 // that supply a single category remain compatible.
 function eventCategories(event) {
@@ -148,6 +152,7 @@ function attend(id) {
   render();
   openEvent(id);
 }
+
 // Event discovery, cards, filters, calendar, and event dialogs.
 function listEvents() {
   return events
@@ -453,6 +458,7 @@ function saveSurvey(ev, id) {
   openEvent(id);
   toast("Your reflection has been saved");
 }
+
 // Friends and interests page rendered inside the current shell.
 function friendsPage() {
   return `<div class="eyebrow">Better with company</div><h1>Your people. Your interests.</h1><p class="muted">Keep a list of friends and discover what you have in common.</p><div class="notice">Demo profiles and activity are fictional. Adding a friend here does not send an invitation.</div><div class="grid">${["Emma", "Noah", "Sofia", "Liam", "Olivia", "Ethan"].map((n, i) => `<div class="card friend"><span class="avatar">${n[0]}</span><div class="info"><h3>${n}</h3><p class="muted">${["Social & service", "Sports & technology", "Arts & culture"][i % 3]}</p></div><button onclick="toggleFriend('${n}')">${data.friends.includes(n) ? "✓ Added · Remove" : "+ Add friend"}</button></div>`).join("")}</div><div class="prefs"><h2>What are you into?</h2><p class="muted">These interests shape your home page recommendations.</p><div class="chips">${categories.map((c) => `<button class="${data.interests.includes(c) ? "active" : ""}" aria-pressed="${data.interests.includes(c)}" onclick="toggleInterest(${esc(JSON.stringify(c))})">${esc(c)}</button>`).join("")}</div></div>`;
@@ -473,6 +479,7 @@ function toggleInterest(c) {
   persist();
   render();
 }
+
 // Shell navigation and page selection. Standalone routes are dispatched here.
 function renderBase() {
   let links = [
@@ -494,7 +501,26 @@ function renderBase() {
   ]
     .map(([p, n]) => `<button onclick="go('${p}')">${n}</button>`)
     .join("");
-  $("userButton").textContent = data.user ? data.user.name + " ↗" : "Sign in ↗";
+
+    const userButton = $("userButton");
+
+    if (data.user) {
+      const initials = (data.user.name || data.user.email || "U")
+        .trim()
+        .split(/\s+/)
+        .map(part => part[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase();
+
+      userButton.textContent = initials;
+      userButton.classList.add("profile-avatar");
+      userButton.title = data.user.name || "My account";
+    } else {
+      userButton.textContent = "Sign in ↗";
+      userButton.classList.remove("profile-avatar");
+    }
+
   $("app").innerHTML =
     page === "home"
       ? home()
@@ -642,10 +668,10 @@ async function boot() {
     location.replace("/" + legacyPage);
     return;
   }
- if (["saved", "friends"].includes(legacyPage)) {
-  page = legacyPage;
-  mode = legacyPage === "saved" ? "saved" : "upcoming";
-}
+  if (["saved", "friends"].includes(legacyPage)) {
+    page = legacyPage;
+    mode = legacyPage === "saved" ? "saved" : "upcoming";
+  }
   if (location.protocol !== "file:") {
     try {
       const config = await api("/config");
@@ -654,14 +680,25 @@ async function boot() {
         data = emptyState();
         events = [];
         render();
-        const [listing, session] = await Promise.all([
-          api("/events"),
-          api("/auth/session"),
-        ]);
+
+        const session = await api("/auth/session");
+        data.user = session.user;
+
+        // Show the signed-in profile immediately, before event loading.
+        render();
+
+        if (data.user) {
+          try {
+            await loadState();
+          } catch (error) {
+            console.error("Unable to load saved user data:", error);
+          }
+        }
+
+        // Load events separately so failures cannot hide the signed-in profile.
+        const listing = await api("/events");
         events = listing.events;
         categories = [...new Set(events.flatMap(eventCategories))];
-        data.user = session.user;
-        if (data.user) await loadState();
       }
     } catch (e) {
       $("app").innerHTML =
@@ -674,6 +711,7 @@ async function boot() {
   if (location.hash.startsWith("#event="))
     openEvent(decodeURIComponent(location.hash.slice(7)));
 }
+
 // Support legacy account links even when only the URL fragment changes.
 window.addEventListener("hashchange", () => {
   const target = location.hash.slice(1);

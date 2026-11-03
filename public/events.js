@@ -1,3 +1,4 @@
+
 "use strict";
 
 /*
@@ -83,7 +84,7 @@ function options(values, current) { return `<option value="">All</option>`+value
 function filterSelect(label, keyName, values) { return `<label>${label}<select onchange="setFilter('${keyName}',this.value)">${options(values,filters[keyName])}</select></label>`; }
 function renderToolbar() {
   const categoryValues=[...new Set(events.flatMap(eventCategories))].sort();
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["saved","Bookmarked"],["rsvp","RSVP’d"],["past","Past events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${filterSelect("Category / type","category",categoryValues)}${filterSelect("Location","location",[...new Set(events.map((e)=>e.location))])}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["food","Has food"],["free","Free events"],["spiritual","Spiritual"]].map(([keyName,label])=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["saved","Bookmarked"],["rsvp","RSVP’d"],["past","Past events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${filterSelect("Category / type","category",categoryValues)}${filterSelect("Location","location",[...new Set(events.map((e)=>e.location))])}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["food","Has food"],["free","Free events"],["spiritual","Spiritual"]].map(([keyName,label)=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
   icons();
 }
 // Display switching: toggling changes the URL as well as the rendered page.
@@ -154,30 +155,82 @@ function closeModal() { if($("modal").open)$("modal").close(); detailId = null; 
 function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(event,"detail-poster")}<div class="dialog-body"><span class="tag">${esc(categoryLabel(event))}${ended(event)?" · Past event":""}</span><h2 style="margin-top:12px">${esc(event.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div><div><span class="muted">Where</span><b>${esc(event.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${event.price?"$"+Number(event.price).toFixed(0):"Free"}</b>${event.food?"Food provided":"Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Campus organizer")}</b>${esc(event.major||"All majors")}</div></div><p>${esc(event.description)}</p><div class="row">${planButton("bookmark", event)}${planButton("rsvp", event)}<a class="primary" style="display:inline-block;padding:12px;border-radius:8px;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location+" BYU Provo Utah")}">View location ↗</a></div></div>`); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
+
+function renderUserProfile() {
+  const userButton = $("userButton");
+  if (data.user) {
+    const initials = (data.user.name || data.user.email || "U")
+      .trim()
+      .split(/\s+/)
+      .map((part) => part[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+    userButton.textContent = initials;
+    userButton.classList.add("profile-avatar");
+    userButton.title = data.user.name || data.user.email || "My account";
+  } else {
+    userButton.textContent = "Sign in ↗";
+    userButton.classList.remove("profile-avatar");
+    userButton.title = "Sign in";
+  }
+  $("sideUserButton").textContent = data.user
+    ? `${data.user.name || data.user.email || "Account"} ↗`
+    : "Sign in";
+}
+
 async function boot() {
   try {
-    const config=await api("/config"); backendMode=config.mode;
+    const config = await api("/config");
+    backendMode = config.mode;
+
     if (backendMode === "supabase") {
-      // Never import demo/local or a previous account's preferences into a login.
+      // Do not carry demo data or another account's saved plans into this session.
       data = { saved: [], rsvp: [], user: null, friends: [] };
       stateReady = false;
-      const [listing, session] = await Promise.all([api("/events"), api("/auth/session")]);
-      events = listing.events.map(event => ({ ...event, poster: categoryLabel(event).toUpperCase() }));
+
+      // Load the session first so the profile avatar updates independently.
+      const session = await api("/auth/session");
       data.user = session.user;
+      renderUserProfile();
+
       if (data.user) {
         const result = await api("/state");
-        if (result.accountId !== session.user.id) throw Error("Your account changed. Reload to load its plans.");
+        if (result.accountId !== data.user.id) {
+          throw Error("Your account changed. Reload to load its plans.");
+        }
         data = { ...data, ...result.state, user: session.user };
       }
       stateReady = true;
-      $("footerMode").textContent = data.user ? "Connected to Supabase · Your personal plans" : "Connected to Supabase · Sign in to save plans";
-      $("userButton").textContent = data.user ? data.user.name + " ↗" : "Sign in ↗";
-      $("sideUserButton").textContent = data.user ? data.user.name + " ↗" : "Sign in";
-    } else stateReady = true;
-  } catch(error) { $("results").innerHTML=`<div class="empty"><h2>We couldn’t load events.</h2><p>${esc(error.message)}</p><button onclick="boot()">Try again</button></div>`; return; }
-  $("pageTitle").textContent=view=== "calendar"?"Your campus calendar.":"What’s happening at BYU.";
-  renderToolbar(); renderResults();
+
+      // Retain the actual event fields from the server, including linked categories.
+      const listing = await api("/events");
+      events = listing.events.map((event) => ({
+        ...event,
+        poster: event.poster || categoryLabel(event).toUpperCase(),
+      }));
+      $("footerMode").textContent = data.user
+        ? "Connected to Supabase · Your personal plans"
+        : "Connected to Supabase · Sign in to save plans";
+    } else {
+      stateReady = true;
+      // Demo mode uses the browser's locally stored preferences.
+      renderUserProfile();
+    }
+  } catch (error) {
+    console.error("Unable to load events:", error);
+    $("results").innerHTML =
+      `<div class="empty"><h2>We couldn’t load events.</h2><p>${esc(error.message)}</p><button onclick="boot()">Try again</button></div>`;
+    return;
+  }
+
+  $("pageTitle").textContent = view === "calendar"
+    ? "Your campus calendar."
+    : "What’s happening at BYU.";
+  renderToolbar();
+  renderResults();
 }
+
 $("modal").addEventListener("click",(event)=>{ if(event.target===$("modal")) closeModal(); });
 document.addEventListener("keydown",(event)=>{ if(event.key=== "Escape"&&!$("drawer").hidden)toggleMenu(); });
 const plans = window.GatherPlans.create({

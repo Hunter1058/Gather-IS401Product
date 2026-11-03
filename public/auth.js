@@ -110,32 +110,65 @@ function auth(signup = false) {
   return `<form class="auth" onsubmit="authenticate(event,${signup})"><span class="eyebrow">Your campus, connected</span><h2>${signup ? "Find your place." : "Welcome back."}</h2><p class="muted">${signup ? "Create your Gather account." : "Sign in to keep your plans together."}</p>${signup ? '<label>Name<input name="name" required maxlength="60" autocomplete="name"></label>' : ""}<label>Email<input name="email" type="email" required autocomplete="email"></label><label>Password<input name="password" type="password" minlength="8" required autocomplete="${signup ? "new-password" : "current-password"}"></label><div id="authError" class="error" role="alert"></div><button class="primary" type="submit">${signup ? "Create account" : "Sign in"}</button><button type="button" onclick="go('${signup ? "login" : "signup"}')">${signup ? "Already have an account? Sign in" : "Create an account"}</button><button type="button" onclick="go('home')">Continue as guest</button></form>`;
 }
 
+
 async function authenticate(ev, signup) {
   ev.preventDefault();
+
   const button = ev.target.querySelector("[type=submit]");
+  const message = $("authError");
+
   button.disabled = true;
-  $("authError").textContent = "";
+  message.textContent = "";
+  message.classList.remove("auth-success");
+  message.classList.add("error");
+  message.setAttribute("role", "alert");
+
   try {
     if (backendMode === "demo") {
       await demoAuthenticate(ev, signup);
       return;
     }
+
     const fields = Object.fromEntries(new FormData(ev.target));
+
     const result = await api("/auth/" + (signup ? "signup" : "login"), {
-      method: "POST", body: JSON.stringify(fields),
+      method: "POST",
+      body: JSON.stringify(fields),
     });
+
     if (!result.user) {
-      $("authError").textContent = result.message || "Check your email to confirm your account, then sign in.";
+      message.classList.remove("error");
+      message.classList.add("auth-success");
+      message.setAttribute("role", "status");
+      message.textContent =
+        "You're almost there! 💚 Check your email to confirm your account, then sign in.";
       return;
     }
-    // The destination page restores the session and loads personal plans.
+
+    // Successful login: return to the homepage.
     go("home");
+
   } catch (error) {
-    $("authError").textContent = error.message;
+    const status = error.status ?? error.statusCode;
+
+    const isOutage =
+      status === 0 ||
+      status === 502 ||
+      status === 503 ||
+      status === 504 ||
+      /failed to fetch|networkerror|network error|fetch failed|timeout/i.test(
+        error.message || ""
+      );
+
+    message.textContent = isOutage
+      ? "Sorry, our system is temporarily down. Please try again in a few minutes."
+      : error.message || "Something went wrong. Please try again.";
+
   } finally {
     button.disabled = false;
   }
 }
+
 async function signOut() {
   try {
     if (backendMode === "supabase") await api("/auth/logout", { method: "POST", body: "{}" });
