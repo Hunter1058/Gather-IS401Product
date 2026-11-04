@@ -113,8 +113,37 @@ function planButton(kind, event, compact = false) {
   </button>`;
 }
 
-// Secondary controls use soft surfaces; the empty slot is for the team's future
-// primary Share control. No Share button or Share behavior is created here.
+function shareButton(event) {
+  return `<button type="button" class="event-share" aria-label="Share ${esc(event.name)}" onclick="shareEvent('${event.id}')">${icon("share-2")}<span>Share</span></button>`;
+}
+function eventShareUrl(id) {
+  const url = new URL("/events", location.href);
+  url.searchParams.set("event", id);
+  return url.href;
+}
+async function shareEvent(id) {
+  const event = events.find(item => item.id === id);
+  if (!event) return;
+  const url = eventShareUrl(id);
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: event.name, text: `Check out ${event.name} on Gather`, url });
+      return;
+    } catch (error) {
+      if (error.name === "AbortError") return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("Event link copied! Send it to anyone.");
+  } catch {
+    showModal(`<button class="close" aria-label="Close share dialog" onclick="closeModal()">✕</button><div class="dialog-body"><h2>Share this event</h2><p>Copy this link and send it to anyone.</p><input id="eventShareLink" aria-label="Event share link" readonly value="${esc(url)}" style="width:100%" onclick="this.select()"></div>`);
+    $("eventShareLink").focus();
+    $("eventShareLink").select();
+  }
+}
+
+// Event cards share the same actions as the details dialog.
 function card(event) {
   return `<article class="card event-card" data-event-id="${esc(event.id)}">
     ${poster(event)}
@@ -132,7 +161,7 @@ function card(event) {
       </div>
       <div class="card-actions event-card-actions">
         ${planButton("rsvp", event)}
-        <div class="event-share-slot" data-event-share-slot="${esc(event.id)}"></div>
+        ${shareButton(event)}
       </div>
     </div>
   </article>`;
@@ -155,7 +184,7 @@ function renderResults() {
 
 function showModal(html) { $("modal").innerHTML=html; if(!$("modal").open)$("modal").showModal(); icons(); }
 function closeModal() { if($("modal").open)$("modal").close(); detailId = null; }
-function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(event,"detail-poster")}<div class="dialog-body"><span class="tag">${esc(categoryLabel(event))}${ended(event)?" · Past event":""}</span><h2 style="margin-top:12px">${esc(event.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div><div><span class="muted">Where</span><b>${esc(event.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${event.price?"$"+Number(event.price).toFixed(0):"Free"}</b>${event.food?"Food provided":"Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Campus organizer")}</b>${esc(event.major||"All majors")}</div></div><p>${esc(event.description)}</p><div class="row">${planButton("bookmark", event)}${planButton("rsvp", event)}<a class="primary" style="display:inline-block;padding:12px;border-radius:8px;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location+" BYU Provo Utah")}">View location ↗</a></div></div>`); }
+function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(event,"detail-poster")}<div class="dialog-body"><span class="tag">${esc(categoryLabel(event))}${ended(event)?" · Past event":""}</span><h2 style="margin-top:12px">${esc(event.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div><div><span class="muted">Where</span><b>${esc(event.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${event.price?"$"+Number(event.price).toFixed(0):"Free"}</b>${event.food?"Food provided":"Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Campus organizer")}</b>${esc(event.major||"All majors")}</div></div><p>${esc(event.description)}</p><div class="row">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}<a class="primary" style="display:inline-block;padding:12px;border-radius:8px;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location+" BYU Provo Utah")}">View location ↗</a></div></div>`); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
 
@@ -234,6 +263,11 @@ async function boot() {
     : "What’s happening at BYU.";
   renderToolbar();
   renderResults();
+  const sharedId = new URL(location.href).searchParams.get("event");
+  if (sharedId) {
+    if (events.some(event => event.id === sharedId)) openEvent(sharedId);
+    else toast("This event is no longer available.");
+  }
 }
 
 $("modal").addEventListener("click",(event)=>{ if(event.target===$("modal")) closeModal(); });

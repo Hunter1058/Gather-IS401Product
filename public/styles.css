@@ -1256,7 +1256,8 @@ footer {
 }
 
 .event-bookmark,
-.event-rsvp {
+.event-rsvp,
+.event-share {
   min-height: 44px;
   background: var(--surface);
   color: var(--muted-foreground);
@@ -1310,17 +1311,9 @@ footer {
   padding: 9px 12px;
 }
 
-.event-share-slot {
-  margin-left: auto;
-}
-
-.event-share-slot:empty {
-  display: none;
-}
-
-/* The Share owner can mount a .primary button inside data-event-share-slot. */
-.event-card .event-share-slot > button {
+.event-share {
   min-height: 44px;
+  padding: 9px 12px;
 }
 
 @media (max-width: 480px) {

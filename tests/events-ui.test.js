@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 // Run the real page scripts with a small document/HTTP fixture. This exercises
 // page logic and rendered markup; it does not replace a real-browser layout test.
-async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], stateError = false, sessionError = false } = {}) {
+async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], stateError = false, sessionError = false, href = 'http://fixture/events', navigator = {} } = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', open: false, hidden: true,
@@ -17,7 +17,8 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
   const context = vm.createContext({ URL, console, Map, Set, Date, encodeURIComponent,
     clearTimeout, setTimeout(fn, ms) { const timer = setTimeout(fn, ms); timer.unref(); return timer; },
     localStorage: { getItem() { return JSON.stringify({ saved: ['stale-demo'], rsvp: ['stale-demo'] }); }, setItem() {} },
-    location: { href: 'http://fixture/events', assign(path) { this.redirect = path; } },
+    navigator,
+    location: { href, assign(path) { this.redirect = path; } },
     history: { replaceState() {} },
     document: { getElementById: element, addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, activeElement: null },
     addEventListener() {},
@@ -52,14 +53,14 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
   return { context, element, records, writes, run: code => vm.runInContext(code, context), fail() { failure = true; }, hold() { held = true; }, release() { held = false; release(); } };
 }
 
-test('page restores account plans, escapes titles and renders secondary controls with an empty Share slot', async () => {
+test('page restores account plans, escapes titles and renders styled share and plan controls', async () => {
   const page = await pageFixture({ saved: ['1'] });
   const html = page.element('results').innerHTML;
   assert.match(html, /Jazz &lt;friends&gt;/);
   assert.match(html, /data-plan-kind="bookmark"/);
   assert.match(html, /data-plan-kind="rsvp"/);
-  assert.match(html, /data-event-share-slot="1"><\/div>/);
-  assert.doesNotMatch(html, />Share</);
+  assert.match(html, /class="event-share"/);
+  assert.match(html, /data-lucide="share-2"/);
   assert.match(html, /Time TBA/);
   assert.equal(page.run('data.saved.includes("stale-demo")'), false);
 });
@@ -132,4 +133,32 @@ test('public events still render during an account-session outage', async () => 
   await page.run('bookmark("1")');
   assert.equal(page.writes.length, 0);
   assert.equal(page.context.location.redirect, undefined);
+});
+
+
+test('share copies a public event link and a guest recipient opens its details', async () => {
+  let copied;
+  const page = await pageFixture({ navigator: { clipboard: { async writeText(url) { copied = url; } } } });
+  await page.run('shareEvent("1")');
+  assert.equal(copied, 'http://fixture/events?event=1');
+  assert.match(page.element('toast').textContent, /link copied/);
+  const recipient = await pageFixture({ user: null, href: copied });
+  assert.equal(recipient.element('modal').open, true);
+  assert.match(recipient.element('modal').innerHTML, /Jazz &lt;friends&gt;/);
+});
+
+test('native share includes the direct link and cancellation is quiet', async () => {
+  let payload;
+  const page = await pageFixture({ navigator: { async share(value) { payload = value; } } });
+  await page.run('shareEvent("1")');
+  assert.equal(payload.url, 'http://fixture/events?event=1');
+  page.context.navigator.share = async () => { const error = new Error(); error.name = 'AbortError'; throw error; };
+  await page.run('shareEvent("1")');
+  assert.equal(page.element('modal').open, false);
+});
+
+test('missing shared events produce a clear message', async () => {
+  const page = await pageFixture({ href: 'http://fixture/events?event=missing' });
+  assert.equal(page.element('modal').open, false);
+  assert.match(page.element('toast').textContent, /no longer available/);
 });
