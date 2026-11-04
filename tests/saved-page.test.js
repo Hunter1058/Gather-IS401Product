@@ -8,7 +8,7 @@ test('Saved deep link filters to bookmarks and removes a card after unsaving', a
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
       innerHTML: '', textContent: '', hidden: true, open: false,
-      setAttribute() {}, addEventListener() {},
+      classList: { add() {}, remove() {} }, setAttribute() {}, addEventListener() {},
     });
     return elements.get(id);
   };

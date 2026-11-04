@@ -8,16 +8,27 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
   process.env.NODE_ENV = 'test';
   process.env.SUPABASE_URL = 'https://fixture.invalid';
   process.env.SUPABASE_KEY = 'publishable-test';
+  // This map represents the remote Auth service, not application session state.
+  const authTokens = new Map();
+  let nextToken = 0;
   globalThis.__gatherTestClientFactory = () => {
-    let user = null;
+    let current = null;
     return { ...db.client, auth: {
       async signInWithPassword({ email }) {
-        user = { id: email.startsWith('a@') ? USER_A : USER_B, email };
-        return { data: { user, session: { access_token: 'test' } }, error: null };
+        const user = { id: email.startsWith('a@') ? USER_A : USER_B, email };
+        const access_token = 'access-' + ++nextToken, refresh_token = 'refresh-' + nextToken;
+        current = { user, access_token, refresh_token };
+        authTokens.set(access_token, current);
+        return { data: { user, session: current }, error: null };
       },
-      async getSession() { return { data: { session: user ? {} : null }, error: null }; },
-      async getUser() { return { data: { user }, error: null }; },
-      async signOut() { user = null; },
+      async setSession(input) {
+        current = authTokens.get(input.access_token);
+        if (!current || current.refresh_token !== input.refresh_token)
+          return { data: { session: null }, error: { status: 401 } };
+        return { data: { session: current }, error: null };
+      },
+      async getUser() { return { data: { user: current?.user || null }, error: null }; },
+      async signOut() { authTokens.delete(current?.access_token); current = null; return { error: null }; },
     } };
   };
   const hooks = modules.registerHooks({
@@ -35,7 +46,10 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
   async function login(email) {
     const res = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'test-pass-123' }) });
     assert.equal(res.status, 200);
-    return res.headers.get('set-cookie').split(';')[0];
+    const cookies = res.headers.getSetCookie();
+    assert(cookies.every(cookie => cookie.includes('HttpOnly') && cookie.includes('SameSite=Lax')));
+    assert(!JSON.stringify(await res.json()).includes('access_token'));
+    return cookies.filter(c => !c.startsWith('gather_session=')).map(c => c.split(';')[0]).join('; ');
   }
   const call = (path, cookie, method = 'GET', body, extra = {}) => fetch(base + '/api' + path, {
     method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), ...extra },
@@ -69,6 +83,22 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     assert.equal((await call('/events/1/bookmark', null, 'PUT', { bookmarked: true })).status, 401);
     const a = await login('a@example.test');
     const b = await login('b@example.test');
+    // A second module instance simulates another worker/cold start with no
+    // knowledge of the login request. Both restore from verified Auth tokens.
+    const { server: second } = await import('../server.js?worker=second');
+    await new Promise(resolve => second.listen(0, '127.0.0.1', resolve));
+    try {
+      const restored = await fetch(`http://127.0.0.1:${second.address().port}/api/auth/session`, { headers: { Cookie: a } });
+      assert.equal((await restored.json()).user.id, USER_A);
+      const users = await Promise.all([a, b].map(cookie => fetch(base + '/api/auth/session', { headers: { Cookie: cookie } }).then(r => r.json())));
+      assert.deepEqual(users.map(result => result.user.id), [USER_A, USER_B]);
+      const forged = await fetch(base + '/api/auth/session', { headers: { Cookie: 'gather_access=forged; gather_refresh=forged' } });
+      assert.equal((await forged.json()).user, null);
+    } finally { await new Promise(resolve => second.close(resolve)); }
+    process.env.VERCEL = '1';
+    const httpsHeaders = { Origin: 'https://' + new URL(base).host };
+    assert.equal((await call('/events/1/bookmark', a, 'PUT', { bookmarked: true }, httpsHeaders)).status, 200);
+    delete process.env.VERCEL;
     assert.equal((await call('/events/1/bookmark', a, 'PUT', { bookmarked: true })).status, 200);
     assert.equal((await call('/events/2/bookmark', a, 'PUT', { bookmarked: true })).status, 200);
     assert.equal((await call('/events/1/rsvp', a, 'PUT', { going: true })).status, 200);
@@ -86,7 +116,9 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     db.errors.set('Bookmark', { code: '42501', message: 'denied' });
     assert.equal((await call('/state', a)).status, 500);
     db.errors.delete('Bookmark');
-    await call('/auth/logout', a, 'POST', {});
+    const loggedOut = await call('/auth/logout', a, 'POST', {});
+    assert.equal(loggedOut.status, 200);
+    assert(loggedOut.headers.getSetCookie().every(c => c.includes('Max-Age=0')));
     assert.equal((await call('/state', a)).status, 401);
     assert.equal((await call('/state', b)).status, 200);
   } finally {

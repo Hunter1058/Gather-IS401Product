@@ -29,7 +29,7 @@ try {
   const date = new Date(); date.setDate(date.getDate() + 3);
   const dateKey = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   const events = ['1', '2'].map(id => ({ id, name: id === '1' ? 'Jazz & friends' : 'Campus games', category: 'Arts', location: 'Music Building', date: dateKey, start: '18:30:00', end: null, description: 'A friendly campus event.', poster: 'ARTS', friends: [], price: 0, food: false, club: 'Campus organizer', major: 'All majors' }));
-  let account = 'a', failure = false, wait = 0;
+  let account = 'a', failure = false, wait = 0, sessionFailure = false, plansFailure = false;
   const writes = [];
   const records = { a: { saved: [], rsvp: [] }, b: { saved: [], rsvp: [] } };
   await context.route('**/api/**', async route => {
@@ -37,6 +37,11 @@ try {
     let status = 200, body;
     if (path === '/api/config') body = { mode: 'supabase' };
     else if (path === '/api/events') body = { events };
+    else if (path === '/api/auth/login') {
+      account = 'a'; body = { user: { id: account, name: 'Student a' } };
+    }
+    else if (path === '/api/auth/session' && sessionFailure) { status = 503; body = { error: 'Account service unavailable' }; }
+    else if (path === '/api/state' && plansFailure) { status = 503; body = { error: 'Plans service unavailable' }; }
     else if (path === '/api/auth/session') body = { user: account ? { id: account, name: 'Student ' + account } : null };
     else if (path === '/api/state') body = { accountId: account, state: { ...records[account], attended: [], friends: [], interests: [], reminders: {}, surveys: {} } };
     else if (/\/api\/events\/\d+\/(bookmark|rsvp)$/.test(path)) {
@@ -117,12 +122,30 @@ try {
   assert.equal(await control('bookmark').evaluate(el => el.getBoundingClientRect().height >= 44), true);
   assert.equal(await control('rsvp').evaluate(el => el.getBoundingClientRect().height >= 44), true);
   await page.screenshot({ path: new URL('../artifacts/events-mobile.png', import.meta.url).pathname, fullPage: true });
+  plansFailure = true;
+  await page.reload(); await page.waitForSelector('.event-card');
+  assert.equal(await control('bookmark').isDisabled(), true);
+  assert.equal(await page.getByText(/Plans service unavailable/).count(), 1);
+  plansFailure = false;
+  sessionFailure = true;
+  await page.reload(); await page.waitForSelector('.event-card');
+  assert.equal(await control('rsvp').isDisabled(), true);
+  assert.equal(await page.getByText(/Account service unavailable/).count(), 1);
+  sessionFailure = false;
   account = null;
   await page.reload(); await page.waitForSelector('.event-card');
   await control('bookmark').click(); await page.waitForURL('**/login');
+  await page.getByLabel('Email', { exact: true }).fill('a@example.test');
+  await page.getByLabel('Password', { exact: true }).fill('test-pass-123');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.waitForURL(base + '/');
+  await page.goto(base + '/events'); await page.waitForSelector('.event-card');
+  assert.equal(await page.locator('#userButton').textContent(), 'SA');
+  await page.reload(); await page.waitForSelector('.event-card');
+  assert.equal(await page.locator('#userButton').textContent(), 'SA');
   assert.deepEqual(errors, []);
   assert(writes.every(write => !('UserID' in write.payload)));
-  console.log('PASS: persistence/reload, errors, pending, focus, concurrent actions, filters, Saved integration, account isolation, modal, guest redirect, mobile, no Share button.');
+  console.log('PASS: persistence/reload, errors, pending, focus, concurrent actions, filters, Saved integration, account isolation, modal, guest redirect, mobile, account-service outages, login/reload, no Share button.');
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));
