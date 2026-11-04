@@ -67,8 +67,23 @@ try {
   await page.goto(base + '/events');
   await page.waitForSelector('.event-card');
   assert.equal(await page.locator('.event-card').count(), 2);
-  assert.equal(await page.getByRole('button', { name: /^Share/ }).count(), 0);
-  assert.equal(await page.locator('[data-event-share-slot]').count(), 2);
+  await page.getByRole('button', { name: 'Minimize', exact: true }).click();
+  await page.locator('#toolbarReopenButton').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#toolbar').isVisible(), false);
+  assert.equal(await page.getByRole('textbox', { name: 'Search events' }).isVisible(), false);
+  await page.getByRole('button', { name: 'Show search & filters', exact: true }).click();
+  assert.equal(await page.getByRole('textbox', { name: 'Search events' }).isVisible(), true);
+
+  await page.locator('.event-card .metadata').first().click();
+  await page.waitForFunction(() => document.getElementById('modal').open);
+  await page.getByRole('button', { name: 'Close event details' }).click();
+  await page.locator('.event-card').first().focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.getElementById('modal').open);
+  await page.getByRole('button', { name: 'Close event details' }).click();
+
+  assert.equal(await page.getByRole('button', { name: /^Share/ }).count(), 2);
+
 
   wait = 250;
   await control('bookmark').click();
@@ -89,9 +104,9 @@ try {
   await control('rsvp').click(); await pressed('rsvp', false);
   assert.deepEqual(records.a.rsvp, ['2']);
 
-  await page.getByRole('button', { name: 'Bookmarked', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Bookmarked', exact: true }).first().isDisabled(), true);
   await control('bookmark').click();
-  await page.waitForFunction(() => document.querySelectorAll('.event-card').length === 1);
+  await pressed('bookmark', false);
   await page.getByRole('button', { name: 'All upcoming', exact: true }).click();
 
   // The legacy Saved page must read the same server preferences and API.
@@ -143,9 +158,27 @@ try {
   assert.equal(await page.locator('#userButton').textContent(), 'SA');
   await page.reload(); await page.waitForSelector('.event-card');
   assert.equal(await page.locator('#userButton').textContent(), 'SA');
+  records.a.saved = ['1'];
+  await page.goto(base + '/');
+  await page.waitForSelector('.grid .card .event-share');
+  assert.equal(await page.locator('.grid .card .event-rsvp').count(), 2);
+  assert.equal(await page.locator('.hero-art .event-share').count(), 1);
+  assert.equal(await page.locator('.mini-event .event-share').count(), 1);
+  await page.evaluate(() => {
+    navigator.share = async payload => { window.sharedEvent = payload; };
+  });
+  await page.locator('.grid .card .event-share').first().click();
+  const shared = await page.evaluate(() => window.sharedEvent);
+  assert.equal(shared.url, base + '/events?event=1');
+  await page.locator('.grid .card [data-plan-kind="rsvp"]').first().click();
+  await page.waitForFunction(() => document.querySelector('.grid .card [data-plan-kind="rsvp"]')?.getAttribute('aria-pressed') === 'true');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'home mobile should not overflow');
+  await page.goto(shared.url);
+  await page.waitForFunction(() => document.getElementById('modal').open);
+  assert.match(await page.locator('dialog h2').textContent(), /Jazz/);
   assert.deepEqual(errors, []);
   assert(writes.every(write => !('UserID' in write.payload)));
-  console.log('PASS: persistence/reload, errors, pending, focus, concurrent actions, filters, Saved integration, account isolation, modal, guest redirect, mobile, account-service outages, login/reload, no Share button.');
+  console.log('PASS: persistence/reload, errors, pending, focus, concurrent actions, filters, Saved integration, account isolation, modal, guest redirect, mobile, account-service outages, login/reload, shared event links, home Share/Going controls.');
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

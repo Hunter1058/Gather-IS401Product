@@ -47,6 +47,7 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
     },
   });
   context.window = context;
+  vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
   vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
   vm.runInContext(await readFile(new URL('../public/events.js', import.meta.url), 'utf8'), context);
   await new Promise(resolve => setImmediate(resolve));
@@ -114,7 +115,7 @@ test('guest cannot save, and failed initial state is never treated as empty succ
 
 test('secondary linked categories appear in labels and both category filters', async () => {
   const page = await pageFixture();
-  assert.match(page.element('results').innerHTML, /Arts · Spiritual/);
+  assert.match(page.element('results').innerHTML, /event-arts[^>]*>Arts<\/span>.*event-spiritual[^>]*>Spiritual<\/span>/s);
   assert.match(page.element('toolbar').innerHTML, /<option[^>]*>Spiritual<\/option>/);
   page.run('setFilter("category", "Spiritual")');
   assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/);
@@ -161,4 +162,26 @@ test('missing shared events produce a clear message', async () => {
   const page = await pageFixture({ href: 'http://fixture/events?event=missing' });
   assert.equal(page.element('modal').open, false);
   assert.match(page.element('toast').textContent, /no longer available/);
+});
+
+test('unknown event details do not claim free admission or food availability', async () => {
+  const page = await pageFixture();
+  assert.equal(page.run('eventAdmission({ price: null })'), 'Not Specified');
+  assert.equal(page.run('eventAdmission({ price: 0 })'), 'Free');
+  assert.equal(page.run('eventAdmission({ price: 12 })'), '$12');
+  assert.equal(page.run('eventFood({ food: null })'), 'Food: Not Specified');
+  assert.equal(page.run('eventFood({ food: false })'), 'Food not provided');
+  page.run('events[0].price = null; events[0].food = null; openEvent("1")');
+  assert.match(page.element('modal').innerHTML, /Food: Not Specified/);
+  assert.match(page.element('modal').innerHTML, /event-description/);
+  assert.match(page.element('modal').innerHTML, /detail-location/);
+  assert.doesNotMatch(page.element('modal').innerHTML, /View location/);
+});
+
+test('mode switches update the selected toolbar chip', async () => {
+  const page = await pageFixture();
+  page.run('setMode("rsvp")');
+  assert.match(page.element('toolbar').innerHTML, /class="active" aria-pressed="true" onclick="setMode\('rsvp'\)/);
+  page.run('setMode("past")');
+  assert.match(page.element('toolbar').innerHTML, /class="active" aria-pressed="true" onclick="setMode\('past'\)/);
 });

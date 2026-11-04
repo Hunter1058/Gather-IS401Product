@@ -127,12 +127,12 @@ export const server = http.createServer(async (req, res) => {
               start: r.EventTime,
               description: r.EventDescription,
               end: null,
-              club: "Campus organizer",
-              major: "All majors",
+              club: null,
+              major: null,
               poster: categories.join(" · ") || "Campus event",
               friends: [],
-              price: 0,
-              food: false
+              price: null,
+              food: null
             };
           }),
         });

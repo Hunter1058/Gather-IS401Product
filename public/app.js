@@ -70,6 +70,14 @@ function eventCategories(event) {
   return event.categories?.length ? event.categories : [event.category || "Campus event"];
 }
 function categoryLabel(event) { return eventCategories(event).join(" · "); }
+function categoryTags(event) {
+  const colors = { "campus event": "campus", sports: "sports", career: "career", spiritual: "spiritual", service: "service", arts: "arts", social: "social" };
+  return eventCategories(event).map(category => {
+    const color = colors[category.trim().toLowerCase()];
+    return `<span class="tag${color ? ` event-${color}` : ""}">${esc(category)}</span>`;
+  }).join(" ");
+}
+
 
 // Derived category values and demo-browser persistence.
 let categories = [...new Set(events.flatMap(eventCategories))];
@@ -135,10 +143,21 @@ function setMode(m) {
 }
 function bookmark(id) { return plans.set("bookmark", id); }
 function rsvp(id) { return plans.set("rsvp", id); }
+function planButton(kind, event, compact = false) {
+  if (kind === "rsvp") return goingButton(event);
+  const selected = data.saved.includes(event.id);
+  return `<button type="button" class="event-bookmark" data-plan-kind="bookmark" data-event-id="${esc(event.id)}" aria-label="${selected ? "Remove bookmark for" : "Bookmark"} ${esc(event.name)}" aria-pressed="${selected}" onclick="bookmark('${event.id}')">${icon(selected ? "bookmark-check" : "bookmark")}${compact ? "" : `<span>${selected ? "Saved" : "Save"}</span>`}</button>`;
+}
+function goingButton(event) {
+  const selected = data.rsvp.includes(event.id);
+  const unavailable = ended(event) && !selected;
+  return `<button type="button" class="event-rsvp" data-plan-kind="rsvp" data-event-id="${esc(event.id)}" aria-label="${selected ? "Cancel RSVP for" : "RSVP to"} ${esc(event.name)}" aria-pressed="${selected}" ${unavailable ? "disabled" : ""} onclick="rsvp('${event.id}')">${icon(selected ? "check" : "user-check")}<span>${unavailable ? "Event ended" : selected ? "Going" : "Going?"}</span></button>`;
+}
 function refreshPlanControls() {
   document.querySelectorAll("[data-plan-kind]").forEach(button => {
     const { planKind, eventId } = button.dataset;
-    button.disabled = plans.busy(planKind, eventId);
+    const event = events.find(item => item.id === eventId);
+    button.disabled = plans.busy(planKind, eventId) || (planKind === "rsvp" && event && ended(event) && !data.rsvp.includes(eventId));
     button.setAttribute("aria-busy", String(button.disabled));
     button.setAttribute("aria-pressed", String(data[planKind === "bookmark" ? "saved" : "rsvp"].includes(eventId)));
   });
@@ -189,8 +208,27 @@ function listEvents() {
     })
     .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
 }
-function card(e) {
-  return `<article class="card">${poster(e)}<div class="card-body"><div><div class="row between"><span class="tag">${esc(categoryLabel(e))}</span><span class="muted" style="font-size:12px">${e.price ? "$" + Number(e.price).toFixed(0) : "Free"}${e.food ? " · Food provided" : ""}</span></div><h3>${esc(e.name)}</h3><div class="metadata"><span>${icon("clock")} ${pretty(e.date)} · ${time(e.start)}${e.end ? "–" + time(e.end) : ""}</span><span>${icon("map-pin")} ${esc(e.location)}</span></div>${e.friends.some((f) => data.friends.includes(f)) ? '<small class="muted">Friends interested · ' + esc(e.friends.filter((f) => data.friends.includes(f)).join(", ")) + "</small>" : ""}</div><div class="card-actions"><button onclick="openEvent('${e.id}')">${ended(e) ? "View & reflect" : "View event"} ↗</button><button class="save ${data.saved.includes(e.id) ? "active" : ""}" aria-pressed="${data.saved.includes(e.id)}" data-plan-kind="bookmark" data-event-id="${e.id}" onclick="bookmark('${e.id}')">${data.saved.includes(e.id) ? icon("bookmark-check") + " Saved" : icon("bookmark") + " Save"}</button></div></div></article>`;
+function card(event) {
+  return `<article class="card event-card" data-event-id="${esc(event.id)}" tabindex="0" aria-label="View details for ${esc(event.name)}" onclick="activateEventCard(event, '${event.id}')" onkeydown="activateEventCard(event, '${event.id}')">
+    ${poster(event)}
+    <div class="card-body">
+      <div class="event-card-heading">
+        <div class="row">${categoryTags(event)}
+          ${eventAdmissionTag(event)}
+        </div>
+        ${planButton("bookmark", event, true)}
+      </div>
+      <h3><button type="button" class="event-title" onclick="openEvent('${event.id}')" aria-label="View details for ${esc(event.name)}">${esc(event.name)}</button></h3>
+      <div class="metadata">
+        <span>${icon("clock")} ${pretty(event.date)} · ${time(event.start)}${event.end ? "–" + time(event.end) : ""}</span>
+        <span>${icon("map-pin")} ${eventLocationLink(event)}</span>
+      </div>
+      <div class="card-actions event-card-actions">
+        ${planButton("rsvp", event)}
+        ${shareButton(event)}
+      </div>
+    </div>
+  </article>`;
 }
 function empty() {
   return `<div class="empty"><h3>No upcoming events match current filters</h3><p class="muted">Try a different date, clear your filters, or explore all events.</p><button onclick="clearFilters()">Clear filters</button> <button onclick="mode='upcoming';clearFilters()">Explore events</button></div>`;
@@ -209,7 +247,7 @@ function filterSelect(label, k, vals) {
   return `<label>${label}<select onchange="setFilter('${k}',this.value)">${options(vals, filters[k])}</select></label>`;
 }
 function toolbar() {
-  return `<div class="toolbar"><div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;updateResults()"><button onclick="filtersOpen=!filtersOpen;render()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters ${Object.values(filters).filter(Boolean).length ? "(" + Object.values(filters).filter(Boolean).length + ")" : ""}</button><button onclick="go(page==='calendar'?'list':'calendar')">${page === "calendar" ? icon("list") + " List view" : icon("calendar-days") + " Calendar view"}</button></div><div class="chips">${[["upcoming", "All upcoming"], ["saved", "Bookmarked"], ["rsvp", "RSVP’d"], ["past", "Past events"], ...(page === "saved" ? [["savedPast", "Past saved events"]] : [])].map(([m, l]) => `<button class="${mode === m ? "active" : ""}" onclick="setMode('${m}')">${l}</button>`).join("")}</div><div class="filters" ${filtersOpen ? "" : "hidden"}>${filterSelect("Category / type", "category", categories)}${filterSelect("Location", "location", [...new Set(events.map((e) => e.location))])}${filterSelect("Club / organizer", "club", [...new Set(events.map((e) => e.club))])}${filterSelect("Major relevance", "major", ["Information Systems", "Business", "Humanities", "Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[
+  return `<div class="toolbar"><div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;updateResults()"><button onclick="filtersOpen=!filtersOpen;render()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters ${Object.values(filters).filter(Boolean).length ? "(" + Object.values(filters).filter(Boolean).length + ")" : ""}</button><button onclick="go(page==='calendar'?'list':'calendar')">${page === "calendar" ? icon("list") + " List view" : icon("calendar-days") + " Calendar view"}</button></div><div class="chips">${[["upcoming", "All upcoming"], ["rsvp", "RSVP’d"], ["past", "Past events"], ...(page === "saved" ? [["savedPast", "Past saved events"]] : [])].map(([m, l]) => `<button class="${mode === m ? "active" : ""}" onclick="setMode('${m}')">${l}</button>`).join("")}</div><div class="filters" ${filtersOpen ? "" : "hidden"}>${filterSelect("Category / type", "category", categories)}${filterSelect("Location", "location", [...new Set(events.map((e) => e.location))])}${filterSelect("Club / organizer", "club", [...new Set(events.map((e) => e.club).filter(Boolean))])}${filterSelect("Major relevance", "major", ["Information Systems", "Business", "Humanities", "Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[
     ["food", "Has food"],
     ["free", "Free events"],
     ["spiritual", "Spiritual"],
@@ -283,7 +321,7 @@ function calendar(arr) {
     let d = key(new Date(y, m, n)),
       es = arr.filter((e) => e.date === d);
     cells.push(
-      `<div class="day"><button class="daynum ${d === key(today) ? "today" : ""}" aria-label="View events on ${d}" onclick="selectDay('${d}')">${n}</button>${es.map((e) => `<button class="calevent" onclick="openEvent('${e.id}')">${time(e.start)}<br>${esc(e.name)}</button>`).join("")}</div>`,
+      `<div class="day"><button class="daynum ${d === key(today) ? "today" : ""}" aria-label="View events on ${d}" onclick="selectDay('${d}')">${n}</button>${es.map((e) => `<div class="calendar-event"><button class="calevent" onclick="openEvent('${e.id}')">${time(e.start)}<br>${esc(e.name)}</button><div class="row calendar-event-actions">${goingButton(e)}${shareButton(e)}</div></div>`).join("")}</div>`,
     );
   }
   return `<div class="row between section-head"><div class="row"><h2>${month.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</h2><button onclick="month=new Date(today.getFullYear(),today.getMonth(),1);selectedDay='';updateResults()">Today</button></div><div class="row"><button aria-label="Previous month" onclick="changeMonth(-1)">←</button><button aria-label="Next month" onclick="changeMonth(1)">→</button></div></div><div class="calendar"><div class="calhead">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => "<div>" + d + "</div>").join("")}</div><div class="calgrid">${cells.join("")}</div></div>${!arr.some((e) => e.date.startsWith(key(month).slice(0, 7))) ? '<p class="notice">No matching events this month. Change months or adjust your filters.</p>' : ""}<div id="dayList" class="day-list">${
@@ -329,7 +367,7 @@ function openEvent(id) {
   }
   detailId = id;
   showModal(
-    `<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(e, "detail-poster")}<div class="dialog-body"><span class="tag">${esc(categoryLabel(e))}${ended(e) ? " · Past event" : ""}</span><h2 style="margin-top:12px">${esc(e.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(e.date, true)}</b>${time(e.start)}${e.end ? "–" + time(e.end) : ""}</div><div><span class="muted">Where</span><b>${esc(e.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${e.price ? "$" + Number(e.price).toFixed(0) : "Free"}</b>${e.food ? "Food provided" : "Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(e.club)}</b>${esc(e.major)}</div></div><p>${esc(e.description)}</p><details><summary>More information</summary><p>Sample listing for the digital mockup. ${e.food ? "Food is included; ask the organizer about dietary options." : "Bring water and any materials noted above."} Visit the organizer’s site to verify real event details.</p><a href="https://www.byu.edu/" target="_blank" rel="noopener">BYU website ↗</a></details><div class="notice">${esc(e.friends.filter((f) => data.friends.includes(f)).join(", ") || "No friends yet")}${e.friends.some((f) => data.friends.includes(f)) ? " interested · demo friend activity" : ""}</div><div class="row"><button class="${data.saved.includes(id) ? "active" : ""}" data-plan-kind="bookmark" data-event-id="${id}" onclick="bookmark('${id}')">${data.saved.includes(id) ? icon("bookmark-check") + " Saved" : icon("bookmark") + " Save event"}</button>${ended(e) ? `<button onclick="attend('${id}')">${data.attended.includes(id) ? "✓ Attended" : "Mark attended"}</button>${data.saved.includes(id) || data.attended.includes(id) ? `<button class="primary" onclick="survey('${id}')">${data.surveys[id] ? "Edit reflection" : "Rate this event"}</button>` : ""}` : `<button class="primary" data-plan-kind="rsvp" data-event-id="${id}" onclick="rsvp('${id}')">${data.rsvp.includes(id) ? "✓ RSVP’d · Cancel" : "RSVP to event"}</button>`}<button onclick="shareEvent('${id}')">Share ↗</button><button onclick="eventMap('${id}')">View location</button></div>${
+    `<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(e.name)}</h2><div class="event-tags">${categoryTags(e)}${ended(e) ? '<span class="tag">Past event</span>' : ""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(e.date, true)}</b>${time(e.start)}${e.end ? "–" + time(e.end) : ""}</div>${eventWhereTile(e)}<div><span class="muted">Admission</span><b>${eventAdmission(e)}</b>${eventFood(e)}</div><div><span class="muted">Hosted by</span><b>${esc(e.club || "Not Specified")}</b>Major relevance: ${esc(e.major || "Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(e.description || "Not Specified")}</p></section><div class="row event-detail-actions"><button class="${data.saved.includes(id) ? "active" : ""}" data-plan-kind="bookmark" data-event-id="${id}" onclick="bookmark('${id}')">${data.saved.includes(id) ? icon("bookmark-check") + " Saved" : icon("bookmark") + " Save event"}</button>${ended(e) ? `<button onclick="attend('${id}')">${data.attended.includes(id) ? "✓ Attended" : "Mark attended"}</button>${data.saved.includes(id) || data.attended.includes(id) ? `<button class="primary" onclick="survey('${id}')">${data.surveys[id] ? "Edit reflection" : "Rate this event"}</button>` : ""}` : `<button class="primary" data-plan-kind="rsvp" data-event-id="${id}" onclick="rsvp('${id}')">${data.rsvp.includes(id) ? "✓ RSVP’d · Cancel" : "RSVP to event"}</button>`}${shareButton(e)}</div>${
       !ended(e)
         ? `<label>Event reminder<select onchange="remind('${id}',this.value)">${[
             ["", "No reminder"],
@@ -370,32 +408,6 @@ function eventMap(id) {
     `<button class="close" onclick="openEvent('${id}')">← Back</button><div class="dialog-body"><div class="eyebrow">Find your way</div><h2>${esc(e.location)}</h2><p>BYU campus · Provo, Utah</p><div class="notice">Open this location on a map for directions and building details.</div><a class="primary" style="display:inline-block;padding:12px;border-radius:8px;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.location + " BYU Provo Utah")}">Open location in Google Maps ↗</a></div>`,
     "Event location",
   );
-}
-async function shareEvent(id) {
-  let e = events.find((e) => e.id === id),
-    url = new URL(location.href);
-  url.hash = "event=" + id;
-  let text =
-    e.name +
-    " · " +
-    pretty(e.date) +
-    " · " +
-    time(e.start) +
-    " · " +
-    e.location +
-    "\n" +
-    (location.protocol === "file:"
-      ? "Open the Gather mockup and find this event."
-      : url.href);
-  try {
-    await navigator.clipboard.writeText(text);
-    toast("Event details copied");
-  } catch (err) {
-    showModal(
-      `<div class="dialog-body"><h2>Share this event</h2><p>Copy these details to send to a friend.</p><textarea aria-label="Event sharing text" rows="5" style="width:100%" readonly>${esc(text)}</textarea><button onclick="openEvent('${id}')">Back to event</button></div>`,
-      "Share event",
-    );
-  }
 }
 function remind(id, v) {
   if (!requireAccount()) return;
@@ -485,21 +497,25 @@ function renderBase() {
   let links = [
     ["home", "Discover"],
     ["list", "Events"],
+    ["bookmarked", "Bookmarked"],
     ["calendar", "Calendar"],
-    ["saved", "Saved"],
     ["friends", "Friends"],
   ];
   $("topnav").innerHTML = links
     .map(
       ([p, n]) =>
-        `<button class="${page === p ? "active" : ""}" onclick="go('${p}')">${n}</button>`,
+        p === "bookmarked"
+          ? `<button type="button" disabled title="Bookmarked page coming soon">${n}</button>`
+          : `<button class="${page === p ? "active" : ""}" onclick="go('${p}')">${n}</button>`,
     )
     .join("");
   $("sideNav").innerHTML = [
     ...links,
     ["login", data.user ? "Account" : "Sign in"],
   ]
-    .map(([p, n]) => `<button onclick="go('${p}')">${n}</button>`)
+    .map(([p, n]) => p === "bookmarked"
+      ? `<button type="button" disabled title="Bookmarked page coming soon">${n}</button>`
+      : `<button onclick="go('${p}')">${n}</button>`)
     .join("");
 
     const userButton = $("userButton");
@@ -564,14 +580,14 @@ function categoryIcon(e) {
   );
 }
 function poster(e, cls = "") {
-  return `<div class="poster ${categoryClass(e)} ${cls}" role="img" aria-label="Sample flyer for ${esc(e.name)}"><span class="shape">${icon(categoryIcon(e))}</span><small>${esc(e.club)} · ${pretty(e.date)}</small><strong>${esc(e.poster.replaceAll(" / ", " · "))}</strong></div>`;
+  return `<div class="poster ${categoryClass(e)} ${cls}" role="img" aria-label="Sample flyer for ${esc(e.name)}"><span class="shape">${icon(categoryIcon(e))}</span><small>${esc(e.club || "Not Specified")} · ${pretty(e.date)}</small><strong>${esc(e.poster.replaceAll(" / ", " · "))}</strong></div>`;
 }
 function hero() {
   let upcoming = events.filter((e) => !ended(e)).slice(0, 3);
   let e = upcoming[slide % upcoming.length];
   if (!e)
     return '<div class="empty"><h2>A little more campus in your life.</h2><p>New events will appear here when they’re available.</p></div>';
-  return `<div class="hero"><div class="hero-copy"><span class="eyebrow">${icon("sparkles")} Make room for a good time</span><h1>Your next favorite<br>campus memory.</h1><p class="muted">Find something you love.<br>Bring someone along.</p><button class="primary" style="margin-top:16px" onclick="go('list')">Explore events ${icon("arrow-up-right")}</button></div><div class="hero-art ${categoryClass(e)}"><span class="bigmark">${icon(categoryIcon(e))}</span><small>FEATURED ON CAMPUS</small><b>${esc(e.name)}</b><p>${pretty(e.date)} · ${time(e.start)}<br>${esc(e.location)}</p><div class="row"><button onclick="openEvent('${e.id}')">View event ${icon("arrow-up-right")}</button><div class="hero-controls"><button aria-label="Previous flyer" onclick="moveSlide(-1)">${icon("chevron-left")}</button><span class="count">${(slide % upcoming.length) + 1} / ${upcoming.length}</span><button aria-label="Next flyer" onclick="moveSlide(1)">${icon("chevron-right")}</button><button aria-label="${paused ? "Play" : "Pause"} slideshow" onclick="paused=!paused;renderHero()">${icon(paused ? "play" : "pause")}</button></div></div></div></div>`;
+  return `<div class="hero"><div class="hero-copy"><span class="eyebrow">${icon("sparkles")} Make room for a good time</span><h1>Your next favorite<br>campus memory.</h1><p class="muted">Find something you love.<br>Bring someone along.</p><button class="primary" style="margin-top:16px" onclick="go('list')">Explore events ${icon("arrow-up-right")}</button></div><div class="hero-art ${categoryClass(e)}" tabindex="0" aria-label="View details for ${esc(e.name)}" onclick="activateEventCard(event, '${e.id}')" onkeydown="activateEventCard(event, '${e.id}')"><span class="bigmark">${icon(categoryIcon(e))}</span><small>FEATURED ON CAMPUS</small><b>${esc(e.name)}</b><p>${pretty(e.date)} · ${time(e.start)}<br>${eventLocationLink(e)}</p><div class="hero-event-actions">${goingButton(e)}${shareButton(e)}</div><div class="row hero-navigation"><div class="hero-controls"><button aria-label="Previous flyer" onclick="moveSlide(-1)">${icon("chevron-left")}</button><span class="count">${(slide % upcoming.length) + 1} / ${upcoming.length}</span><button aria-label="Next flyer" onclick="moveSlide(1)">${icon("chevron-right")}</button><button aria-label="${paused ? "Play" : "Pause"} slideshow" onclick="paused=!paused;renderHero()">${icon(paused ? "play" : "pause")}</button></div></div></div></div>`;
 }
 function home() {
   let upcoming = events.filter((e) => !ended(e)),
@@ -586,7 +602,7 @@ function home() {
       .slice(0, 3)
       .map(card)
       .join("") || '<p class="muted">You’re all caught up.</p>'
-  }</div></div><aside class="sidebar"><section class="glass-panel panel-pad"><h2 class="side-title">${icon("bookmark")} Your next plans</h2><p>Good ideas you kept for later.</p>${saved.map((e) => `<div class="mini-event"><span class="date-chip">${new Date(e.date + "T12:00").toLocaleDateString("en-US", { month: "short" })}<b>${Number(e.date.slice(-2))}</b></span><div><button onclick="openEvent('${e.id}')">${esc(e.name)}</button><p>${time(e.start)} · ${esc(e.location)}</p></div></div>`).join("") || '<p class="notice">Tap a bookmark on any event to keep it here.</p>'}<button class="primary" onclick="go('saved')">View saved events ${icon("arrow-right")}</button></section><section class="glass-panel panel-pad"><h2 class="side-title">${icon("users")} Better together</h2><div class="friend-preview">${data.friends
+  }</div></div><aside class="sidebar"><section class="glass-panel panel-pad"><h2 class="side-title">${icon("bookmark")} Your next plans</h2><p>Good ideas you kept for later.</p>${saved.map((e) => `<div class="mini-event" tabindex="0" aria-label="View details for ${esc(e.name)}" onclick="activateEventCard(event, '${e.id}')" onkeydown="activateEventCard(event, '${e.id}')"><span class="date-chip">${new Date(e.date + "T12:00").toLocaleDateString("en-US", { month: "short" })}<b>${Number(e.date.slice(-2))}</b></span><div><button onclick="openEvent('${e.id}')">${esc(e.name)}</button><p>${time(e.start)} · ${eventLocationLink(e)}</p><div class="row mini-event-actions">${goingButton(e)}${shareButton(e)}</div></div></div>`).join("") || '<p class="notice">Tap a bookmark on any event to keep it here.</p>'}<button class="primary" onclick="go('saved')">View saved events ${icon("arrow-right")}</button></section><section class="glass-panel panel-pad"><h2 class="side-title">${icon("users")} Better together</h2><div class="friend-preview">${data.friends
     .slice(0, 5)
     .map(
       (n) => `<span class="avatar" aria-label="${esc(n)}">${esc(n[0])}</span>`,

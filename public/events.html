@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/styles.css" />
     <script defer src="/vendor/lucide.min.js"></script>
     <script defer src="/event-plans.js"></script>
+    <script defer src="/event-sharing.js"></script>
     <script defer src="/events.js"></script>
   </head>
   <body>
@@ -26,20 +27,21 @@
       <nav id="topnav" aria-label="Main navigation">
         <a href="/">Discover</a>
         <a class="active" href="/events">Events</a>
+        <button type="button" disabled title="Bookmarked page coming soon">Bookmarked</button>
         <a href="/events?view=calendar">Calendar</a>
-        <a href="/#saved">Saved</a>
         <a href="/#friends">Friends</a>
       </nav>
       <a class="header-user" id="userButton" href="/login" style="text-decoration:none">Sign in</a>
     </header>
+    <button type="button" id="toolbarReopenButton" class="toolbar-reopen" hidden aria-label="Show search &amp; filters" aria-controls="toolbar" aria-expanded="false" title="Show search &amp; filters" onclick="toggleToolbar()"><i data-lucide="chevron-down" aria-hidden="true"></i></button>
     <aside id="drawer" class="drawer" hidden aria-label="Navigation">
       <button onclick="toggleMenu()">Close menu</button>
       <div class="brand">Gather<span>.</span></div>
       <nav>
         <a href="/">Discover</a>
         <a href="/events">Events</a>
+        <button type="button" disabled title="Bookmarked page coming soon">Bookmarked</button>
         <a href="/events?view=calendar">Calendar</a>
-        <a href="/#saved">Saved</a>
         <a href="/#friends">Friends</a>
         <a id="sideUserButton" href="/login">Sign in</a>
       </nav>

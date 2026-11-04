@@ -26,6 +26,7 @@ try { const stored = JSON.parse(localStorage.getItem("gather-events-v1")); if (s
 let mode = "upcoming", view = new URL(location.href).searchParams.get("view") === "calendar" ? "calendar" : "list";
 let filters = { q:"", category:"", location:"", club:"", major:"", from:"", to:"", food:false, free:false, spiritual:false };
 let filtersOpen = false;
+let toolbarCollapsed = false;
 let month = new Date(today.getFullYear(), today.getMonth(), 1);
 let selectedDay = "";
 let backendMode = "demo";
@@ -39,6 +40,14 @@ function eventCategories(event) {
   return event.categories?.length ? event.categories : [event.category || "Campus event"];
 }
 function categoryLabel(event) { return eventCategories(event).join(" · "); }
+function categoryTags(event) {
+  const colors = { "campus event": "campus", sports: "sports", career: "career", spiritual: "spiritual", service: "service", arts: "arts", social: "social" };
+  return eventCategories(event).map(category => {
+    const color = colors[category.trim().toLowerCase()];
+    return `<span class="tag${color ? ` event-${color}` : ""}">${esc(category)}</span>`;
+  }).join(" ");
+}
+
 
 // Presentation helpers convert database values into readable text and icons.
 function time(value) { if (!value) return "Time TBA"; const [h,m] = value.split(":").map(Number); return `${h%12||12}${m?":"+String(m).padStart(2,"0"):""} ${h<12?"AM":"PM"}`; }
@@ -49,7 +58,7 @@ function icons() { window.lucide?.createIcons(); }
 function toast(message) { const el=$("toast"); el.textContent=message; clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.textContent="",3500); }
 function categoryClass(event) { return "category-"+({ Social:"social", Arts:"arts", Culture:"culture", Service:"service", Spiritual:"spiritual" }[event.category]||"primary"); }
 function categoryIcon(event) { return ({ Social:"party-popper", Arts:"music-2", Career:"lightbulb", Service:"heart-handshake", Sports:"trophy", Culture:"globe-2", Spiritual:"sun" }[event.category]||"calendar-days"); }
-function poster(event, extra="") { return `<div class="poster ${categoryClass(event)} ${extra}" role="img" aria-label="Flyer for ${esc(event.name)}"><span class="shape">${icon(categoryIcon(event))}</span><small>${esc(event.club)} · ${pretty(event.date)}</small><strong>${esc(event.poster||categoryLabel(event).toUpperCase())}</strong></div>`; }
+function poster(event, extra="") { return `<div class="poster ${categoryClass(event)} ${extra}" role="img" aria-label="Flyer for ${esc(event.name)}"><span class="shape">${icon(categoryIcon(event))}</span><small>${esc(event.club || "Not Specified")} · ${pretty(event.date)}</small><strong>${esc(event.poster||categoryLabel(event).toUpperCase())}</strong></div>`; }
 
 // Server communication: API responses use JSON and session cookies.
 async function api(path, options={}) {
@@ -71,7 +80,7 @@ function requireAccount() {
 function toggleMenu() { const open=$("drawer").hidden; $("drawer").hidden=!open; $("menuButton").setAttribute("aria-expanded",String(open)); }
 
 // Filtering and search: the filters object describes the current query.
-function setMode(next) { mode=next; selectedDay=""; renderResults(); }
+function setMode(next) { mode=next; selectedDay=""; renderToolbar(); renderResults(); }
 function setFilter(keyName, value) { filters[keyName]=value; renderResults(); }
 function clearFilters() { Object.keys(filters).forEach((k)=>filters[k]=typeof filters[k]==="boolean"?false:""); filtersOpen=false; renderToolbar(); renderResults(); }
 function filteredEvents() {
@@ -85,9 +94,43 @@ function options(values, current) { return `<option value="">All</option>`+value
 function filterSelect(label, keyName, values) { return `<label>${label}<select onchange="setFilter('${keyName}',this.value)">${options(values,filters[keyName])}</select></label>`; }
 function renderToolbar() {
   const categoryValues=[...new Set(events.flatMap(eventCategories))].sort();
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["saved","Bookmarked"],["rsvp","RSVP’d"],["past","Past events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${filterSelect("Category / type","category",categoryValues)}${filterSelect("Location","location",[...new Set(events.map((e)=>e.location))])}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["food","Has food"],["free","Free events"],["spiritual","Spiritual"]].map(([keyName,label])=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["past","Past events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${filterSelect("Category / type","category",categoryValues)}${filterSelect("Location","location",[...new Set(events.map((e)=>e.location))])}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["food","Has food"],["free","Free events"],["spiritual","Spiritual"]].map(([keyName,label])=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
+  const toolbar = $("toolbar");
+  toolbar.className = `toolbar event-toolbar${toolbarCollapsed ? " is-collapsed" : ""}`;
+  toolbar.innerHTML = `<div id="eventSearchControls" ${toolbarCollapsed ? "hidden" : ""}>${toolbar.innerHTML}</div><div class="toolbar-collapse-row"><button type="button" class="toolbar-reset" onclick="clearFilters()" aria-label="Reset search and filters">${icon("rotate-ccw")} Reset filters</button><button type="button" id="toolbarCollapseButton" class="toolbar-collapse" aria-controls="eventSearchControls" aria-expanded="${!toolbarCollapsed}" onclick="toggleToolbar()">${icon(toolbarCollapsed ? "chevron-down" : "chevron-up")}<span>${toolbarCollapsed ? "Show search & filters" : "Minimize"}</span></button></div>`;
+  $("toolbarReopenButton").hidden = !toolbarCollapsed;
+  positionToolbarReopen();
   icons();
 }
+function positionToolbarReopen() {
+  const header = document.querySelector("header");
+  if (!header) return;
+  const rect = header.getBoundingClientRect();
+  const button = $("toolbarReopenButton");
+  button.style.top = `${rect.bottom + 8}px`;
+  button.style.left = `${rect.right - 44}px`;
+}
+async function toggleToolbar() {
+  const toolbar = $("toolbar");
+  if (!toolbarCollapsed && toolbar.animate) {
+    const animation = toolbar.animate([
+      { opacity: 1, transform: "translateY(0) scaleY(1)" },
+      { opacity: 0, transform: "translateY(-24px) scaleY(0.8)" },
+    ], { duration: matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 160, easing: "ease-in", transformOrigin: "top" });
+    await animation.finished;
+  }
+  toolbarCollapsed = !toolbarCollapsed;
+  renderToolbar();
+  if (!toolbarCollapsed) {
+    toolbar.scrollIntoView({ block: "nearest" });
+  }
+  $(toolbarCollapsed ? "toolbarReopenButton" : "toolbarCollapseButton").focus();
+}
+window.addEventListener("resize", positionToolbarReopen);
+window.addEventListener("scroll", () => {
+  if (toolbarCollapsed) positionToolbarReopen();
+}, { passive: true });
+
 // Display switching: toggling changes the URL as well as the rendered page.
 function toggleView() { view=view=== "calendar"?"list":"calendar"; history.replaceState(null,"",view=== "calendar"?"/events?view=calendar":"/events"); $("pageTitle").textContent=view=== "calendar"?"Your campus calendar.":"What’s happening at BYU."; renderResults(); }
 
@@ -113,51 +156,21 @@ function planButton(kind, event, compact = false) {
   </button>`;
 }
 
-function shareButton(event) {
-  return `<button type="button" class="event-share" aria-label="Share ${esc(event.name)}" onclick="shareEvent('${event.id}')">${icon("share-2")}<span>Share</span></button>`;
-}
-function eventShareUrl(id) {
-  const url = new URL("/events", location.href);
-  url.searchParams.set("event", id);
-  return url.href;
-}
-async function shareEvent(id) {
-  const event = events.find(item => item.id === id);
-  if (!event) return;
-  const url = eventShareUrl(id);
-  if (navigator.share) {
-    try {
-      await navigator.share({ title: event.name, text: `Check out ${event.name} on Gather`, url });
-      return;
-    } catch (error) {
-      if (error.name === "AbortError") return;
-    }
-  }
-  try {
-    await navigator.clipboard.writeText(url);
-    toast("Event link copied! Send it to anyone.");
-  } catch {
-    showModal(`<button class="close" aria-label="Close share dialog" onclick="closeModal()">✕</button><div class="dialog-body"><h2>Share this event</h2><p>Copy this link and send it to anyone.</p><input id="eventShareLink" aria-label="Event share link" readonly value="${esc(url)}" style="width:100%" onclick="this.select()"></div>`);
-    $("eventShareLink").focus();
-    $("eventShareLink").select();
-  }
-}
-
 // Event cards share the same actions as the details dialog.
 function card(event) {
-  return `<article class="card event-card" data-event-id="${esc(event.id)}">
+  return `<article class="card event-card" data-event-id="${esc(event.id)}" tabindex="0" aria-label="View details for ${esc(event.name)}" onclick="activateEventCard(event, '${event.id}')" onkeydown="activateEventCard(event, '${event.id}')">
     ${poster(event)}
     <div class="card-body">
       <div class="event-card-heading">
-        <div class="row"><span class="tag">${esc(categoryLabel(event))}</span>
-          <span class="event-admission muted">${event.price ? "$" + Number(event.price).toFixed(0) : "Free"}${event.food ? " · Food provided" : ""}</span>
+        <div class="row">${categoryTags(event)}
+          ${eventAdmissionTag(event)}
         </div>
         ${planButton("bookmark", event, true)}
       </div>
       <h3><button type="button" class="event-title" onclick="openEvent('${event.id}')" aria-label="View details for ${esc(event.name)}">${esc(event.name)}</button></h3>
       <div class="metadata">
         <span>${icon("clock")} ${pretty(event.date)} · ${time(event.start)}${event.end ? "–" + time(event.end) : ""}</span>
-        <span>${icon("map-pin")} ${esc(event.location)}</span>
+        <span>${icon("map-pin")} ${eventLocationLink(event)}</span>
       </div>
       <div class="card-actions event-card-actions">
         ${planButton("rsvp", event)}
@@ -169,7 +182,7 @@ function card(event) {
 function calendar(eventsToShow) {
   const year=month.getFullYear(), monthIndex=month.getMonth();
   const first=new Date(year,monthIndex,1).getDay(), days=new Date(year,monthIndex+1,0).getDate(), cells=[];
-  for(let index=0;index<Math.ceil((first+days)/7)*7;index++){ const day=index-first+1; if(day<1||day>days){cells.push('<div class="day dim"></div>');continue;} const date=key(new Date(year,monthIndex,day)); const dayEvents=eventsToShow.filter((event)=>event.date===date); cells.push(`<div class="day"><button class="daynum ${date===key(today)?"today":""}" onclick="selectDay('${date}')">${day}</button>${dayEvents.map((event)=>`<button class="calevent" onclick="openEvent('${event.id}')">${time(event.start)}<br>${esc(event.name)}</button>`).join("")}</div>`); }
+  for(let index=0;index<Math.ceil((first+days)/7)*7;index++){ const day=index-first+1; if(day<1||day>days){cells.push('<div class="day dim"></div>');continue;} const date=key(new Date(year,monthIndex,day)); const dayEvents=eventsToShow.filter((event)=>event.date===date); cells.push(`<div class="day"><button class="daynum ${date===key(today)?"today":""}" onclick="selectDay('${date}')">${day}</button>${dayEvents.map((event)=>`<div class="calendar-event"><button class="calevent" onclick="openEvent('${event.id}')">${time(event.start)}<br>${esc(event.name)}</button><div class="row calendar-event-actions">${planButton("rsvp", event)}${shareButton(event)}</div></div>`).join("")}</div>`); }
   return `<div class="row between section-head"><div class="row"><h2>${month.toLocaleDateString("en-US",{month:"long",year:"numeric"})}</h2><button onclick="month=new Date(today.getFullYear(),today.getMonth(),1);selectedDay='';renderResults()">Today</button></div><div class="row"><button aria-label="Previous month" onclick="changeMonth(-1)">←</button><button aria-label="Next month" onclick="changeMonth(1)">→</button></div></div><div class="calendar"><div class="calhead">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d)=>"<div>"+d+"</div>").join("")}</div><div class="calgrid">${cells.join("")}</div></div><div id="dayList" class="day-list">${selectedDay?`<div class="row between section-head"><h2>${pretty(selectedDay,true)}</h2><button onclick="selectedDay='';renderResults()">Back to month</button></div><div class="list">${eventsToShow.filter((event)=>event.date===selectedDay).map(card).join("")||'<div class="empty">No events on this day match your filters.</div>'}</div>`:'<p class="muted">Select a date to see its schedule, or an event to see the details.</p>'}</div>`;
 }
 function changeMonth(offset) { month=new Date(month.getFullYear(),month.getMonth()+offset,1); selectedDay=""; renderResults(); }
@@ -184,7 +197,7 @@ function renderResults() {
 
 function showModal(html) { $("modal").innerHTML=html; if(!$("modal").open)$("modal").showModal(); icons(); }
 function closeModal() { if($("modal").open)$("modal").close(); detailId = null; }
-function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button>${poster(event,"detail-poster")}<div class="dialog-body"><span class="tag">${esc(categoryLabel(event))}${ended(event)?" · Past event":""}</span><h2 style="margin-top:12px">${esc(event.name)}</h2><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div><div><span class="muted">Where</span><b>${esc(event.location)}</b>BYU · Provo, Utah</div><div><span class="muted">Admission</span><b>${event.price?"$"+Number(event.price).toFixed(0):"Free"}</b>${event.food?"Food provided":"Food not provided"}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Campus organizer")}</b>${esc(event.major||"All majors")}</div></div><p>${esc(event.description)}</p><div class="row">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}<a class="primary" style="display:inline-block;padding:12px;border-radius:8px;text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location+" BYU Provo Utah")}">View location ↗</a></div></div>`); }
+function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not Specified")}</b>Major relevance: ${esc(event.major||"Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not Specified")}</p></section><div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
 

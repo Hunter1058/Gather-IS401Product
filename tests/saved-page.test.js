@@ -42,6 +42,7 @@ test('Saved deep link filters to bookmarks and removes a card after unsaving', a
     },
   });
   context.window = context;
+  vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
   vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
   // Expose the real boot promise so this test waits for state loading/rendering.
   const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
@@ -53,7 +54,7 @@ test('Saved deep link filters to bookmarks and removes a card after unsaving', a
   assert.doesNotMatch(element('app').innerHTML, /data-event-id="1"/);
   vm.runInContext('filters.category = "Spiritual"; filters.spiritual = true; render();', context);
   assert.match(element('app').innerHTML, /data-event-id="2"/);
-  assert.match(element('app').innerHTML, /Arts · Spiritual/);
+  assert.match(element('app').innerHTML, /event-arts[^>]*>Arts<\/span>.*event-spiritual[^>]*>Spiritual<\/span>/s);
   await vm.runInContext('bookmark("2")', context);
   assert.deepEqual(saved, []);
   assert.doesNotMatch(element('app').innerHTML, /data-event-id="2"/);
