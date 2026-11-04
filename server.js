@@ -101,14 +101,23 @@ export const server = http.createServer(async (req, res) => {
       if (route === "/events" && req.method === "GET") {
         const { data, error } = await publicClient
           .from("Events")
-          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, categoryLinks:Event_Category_Linking_Table(category:EventCategory(EventCatagory))")
+          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, CampusLocation, categoryLinks:Event_Category_Linking_Table(category:EventCategory(EventCatagory))")
           .order("EventDate", { ascending: true })
           .limit(500);
         
         if (error) throw error;
+
+        const { data: categoryRows, error: categoryError } = await publicClient
+          .from("EventCategory")
+          .select("EventCatagory")
+          .order("EventCatagory");
+
+        if (categoryError) throw categoryError;
+
         
         // Map relational data back to the JSON structure the frontend expects
         return json(res, 200, {
+          categories: categoryRows.map(row => row.EventCatagory),
           events: data.map((r) => {
             // PostgREST can return an object while EventID alone is the link PK,
             // or an array after the team enables multiple categories per event.
@@ -123,6 +132,7 @@ export const server = http.createServer(async (req, res) => {
               category: categories[0] || "Campus event",
               categories,
               location: r.EventLocation,
+              campusLocation: r.CampusLocation,
               date: r.EventDate,
               start: r.EventTime,
               description: r.EventDescription,

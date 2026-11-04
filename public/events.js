@@ -20,11 +20,12 @@ const key = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStar
 // Events begin empty and are populated from Supabase after the page boots.
 // Demo/local state is kept separately in the browser for quick prototype use.
 let events = [];
+let availableCategories = [];
 let data = { saved:[], rsvp:[], user:null, friends:[] };
 try { const stored = JSON.parse(localStorage.getItem("gather-events-v1")); if (stored) data = { ...data, ...stored }; } catch {}
 
 let mode = "upcoming", view = new URL(location.href).searchParams.get("view") === "calendar" ? "calendar" : "list";
-let filters = { q:"", category:"", location:"", club:"", major:"", from:"", to:"", food:false, free:false, spiritual:false };
+let filters = { q:"", category:[], campus:"", location:"", club:"", major:"", from:"", to:"", free:false };
 let filtersOpen = false;
 let toolbarCollapsed = false;
 let month = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -81,8 +82,21 @@ function toggleMenu() { const open=$("drawer").hidden; $("drawer").hidden=!open;
 
 // Filtering and search: the filters object describes the current query.
 function setMode(next) { mode=next; selectedDay=""; renderToolbar(); renderResults(); }
-function setFilter(keyName, value) { filters[keyName]=value; renderResults(); }
-function clearFilters() { Object.keys(filters).forEach((k)=>filters[k]=typeof filters[k]==="boolean"?false:""); filtersOpen=false; renderToolbar(); renderResults(); }
+function setFilter(keyName, value) {
+  filters[keyName] = value;
+  if (keyName === "campus") {
+    filters.location = "";
+    renderToolbar();
+  }
+  renderResults();
+}
+function toggleCategory(category, checked) {
+  filters.category = checked
+    ? [...new Set([...filters.category, category])]
+    : filters.category.filter(value => value !== category);
+  renderResults();
+}
+function clearFilters() { Object.keys(filters).forEach((k)=>filters[k]=Array.isArray(filters[k])?[]:typeof filters[k]==="boolean"?false:""); filtersOpen=false; renderToolbar(); renderResults(); }
 function filteredEvents() {
   return events.filter((event) => {
     const past=ended(event);
@@ -102,14 +116,48 @@ function filteredEvents() {
         : mode === "rsvp"
         ? data.rsvp.includes(event.id) && !past
         : !past;
-    return allowed && (!filters.q || `${event.name} ${event.club||""} ${event.location}`.toLowerCase().includes(filters.q.toLowerCase())) && (!filters.category||eventCategories(event).includes(filters.category)) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.food||event.food) && (!filters.free||event.price===0) && (!filters.spiritual||eventCategories(event).includes("Spiritual"));
+    return allowed && (!filters.q || `${event.name} ${event.club||""} ${event.location}`.toLowerCase().includes(filters.q.toLowerCase())) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus) && (!filters.free||event.price===0);
   }).sort((a,b)=>`${a.date || "9999-12-31"}${a.start || ""}`.localeCompare(`${b.date || "9999-12-31"}${b.start || ""}`));
 }
 function options(values, current) { return `<option value="">All</option>`+values.map((value)=>`<option ${value===current?"selected":""}>${esc(value)}</option>`).join(""); }
 function filterSelect(label, keyName, values) { return `<label>${label}<select onchange="setFilter('${keyName}',this.value)">${options(values,filters[keyName])}</select></label>`; }
 function renderToolbar() {
-  const categoryValues=[...new Set(events.flatMap(eventCategories))].sort();
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${filterSelect("Category / type","category",categoryValues)}${filterSelect("Location","location",[...new Set(events.map((e)=>e.location))])}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["food","Has food"],["free","Free events"],["spiritual","Spiritual"]].map(([keyName,label])=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
+  const categoryValues = availableCategories.length
+    ? availableCategories
+    : [...new Set(events.flatMap(eventCategories))].sort();
+  const locationValues = [...new Set(events
+    .filter(event => !filters.campus || event.campusLocation === filters.campus)
+    .map(event => event.location)
+    .filter(Boolean))].sort();
+  const categoryEmojis = {
+    "Sports": "🏀",
+    "Arts": "🎨",
+    "Music": "🎵",
+    "Dance": "💃",
+    "Games": "🎮",
+    "Social": "🎉",
+    "Food": "🍕",
+    "Outdoors": "🏕️",
+    "Fitness": "💪",
+    "Career & Networking": "💼",
+    "Academic": "📚",
+    "Technology": "💻",
+    "Culture": "🌎",
+    "Service & Volunteering": "🤝",
+    "Spiritual & Religious": "✨"
+  };
+  const categoryCheckboxes = `<div class="category-filter">
+    <label>Category / type</label>
+    <details class="category-dropdown">
+      <summary>${filters.category.length ? filters.category.length + " categories selected" : "All categories"}</summary>
+      <div class="category-options">${
+        categoryValues.map(category => `<label><input type="checkbox" value="${esc(category)}" ${
+          filters.category.includes(category) ? "checked" : ""
+        } onchange="toggleCategory(this.value,this.checked)"> ${categoryEmojis[category] || "📌"} ${esc(category)}</label>`).join("")
+      }</div>
+    </details>
+  </div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["free","Free events"]].map(([keyName,label])=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
   const toolbar = $("toolbar");
   toolbar.className = `toolbar event-toolbar${toolbarCollapsed ? " is-collapsed" : ""}`;
   toolbar.innerHTML = `<div id="eventSearchControls" ${toolbarCollapsed ? "hidden" : ""}>${toolbar.innerHTML}</div><div class="toolbar-collapse-row"><button type="button" class="toolbar-reset" onclick="clearFilters()" aria-label="Reset search and filters">${icon("rotate-ccw")} Reset filters</button><button type="button" id="toolbarCollapseButton" class="toolbar-collapse" aria-controls="eventSearchControls" aria-expanded="${!toolbarCollapsed}" onclick="toggleToolbar()">${icon(toolbarCollapsed ? "chevron-down" : "chevron-up")}<span>${toolbarCollapsed ? "Show search & filters" : "Minimize"}</span></button></div>`;
@@ -210,6 +258,13 @@ function renderResults() {
   ? `<div class="empty">
       <h3>No past saved events yet.</h3>
       <p class="muted">Events you've bookmarked or RSVP'd to from the past six months will appear here!</p>
+      <button onclick="clearFilters();setMode('upcoming')">Explore events</button>
+    </div>`
+  : mode === "rsvp" && !data.rsvp.some(id => events.some(event => event.id === id && !ended(event)))
+  ? `<div class="empty">
+      <h3>You haven't RSVP'd to any upcoming events yet!</h3>
+      <p class="muted">Explore upcoming events and RSVP to something that interests you.</p>
+      <button onclick="clearFilters();setMode('upcoming')">Explore events</button>
     </div>`
   : '<div class="empty"><h3>No events match current filters</h3><p class="muted">Try a different date or clear your filters.</p><button onclick="clearFilters()">Clear filters</button></div>'));
   icons();
@@ -260,6 +315,9 @@ async function boot() {
         api("/events"), api("/auth/session"),
       ]);
       if (listingResult.status === "rejected") throw listingResult.reason;
+      availableCategories = Array.isArray(listingResult.value.categories)
+        ? listingResult.value.categories
+        : [];
       events = listingResult.value.events.map(event => ({
         ...event, poster: event.poster || categoryLabel(event).toUpperCase(),
       }));
