@@ -1364,6 +1364,13 @@ footer {
 .event-card .event-card-heading > .event-bookmark:hover {
   background: var(--primary-soft);
 }
+/* Keep selected bookmarks highlighted on every event tab */
+.event-card .event-card-heading > .event-bookmark[aria-pressed="true"] {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
 .grid .event-card .card-body { display: flex; flex-direction: column; }
 .grid .event-card .event-card-actions { margin-top: auto; }
 .grid .event-card .metadata { margin-bottom: 16px; }
