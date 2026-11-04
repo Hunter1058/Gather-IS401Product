@@ -231,7 +231,20 @@ function card(event) {
   </article>`;
 }
 function empty() {
-  return `<div class="empty"><h3>No upcoming events match current filters</h3><p class="muted">Try a different date, clear your filters, or explore all events.</p><button onclick="clearFilters()">Clear filters</button> <button onclick="mode='upcoming';clearFilters()">Explore events</button></div>`;
+  if (mode === "past" && page !== "home") {
+    return `<div class="empty">
+      <h3>No past saved events yet.</h3>
+      <p class="muted">Events you've bookmarked or RSVP'd to from the past six months will appear here!</p>
+      <button onclick="mode='upcoming';clearFilters()">Explore events</button>
+    </div>`;
+  }
+
+  return `<div class="empty">
+    <h3>No upcoming events match current filters</h3>
+    <p class="muted">Try a different date or clear your filters.</p>
+    <button onclick="clearFilters()">Clear filters</button>
+    <button onclick="mode='upcoming';clearFilters()">Explore events</button>
+  </div>`;
 }
 function options(values, current) {
   return (
@@ -246,20 +259,80 @@ function options(values, current) {
 function filterSelect(label, k, vals) {
   return `<label>${label}<select onchange="setFilter('${k}',this.value)">${options(vals, filters[k])}</select></label>`;
 }
+
 function toolbar() {
-  return `<div class="toolbar"><div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;updateResults()"><button onclick="filtersOpen=!filtersOpen;render()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters ${Object.values(filters).filter(Boolean).length ? "(" + Object.values(filters).filter(Boolean).length + ")" : ""}</button><button onclick="go(page==='calendar'?'list':'calendar')">${page === "calendar" ? icon("list") + " List view" : icon("calendar-days") + " Calendar view"}</button></div><div class="chips">${[["upcoming", "All upcoming"], ["rsvp", "RSVP’d"], ["past", "Past events"], ...(page === "saved" ? [["savedPast", "Past saved events"]] : [])].map(([m, l]) => `<button class="${mode === m ? "active" : ""}" onclick="setMode('${m}')">${l}</button>`).join("")}</div><div class="filters" ${filtersOpen ? "" : "hidden"}>${filterSelect("Category / type", "category", categories)}${filterSelect("Location", "location", [...new Set(events.map((e) => e.location))])}${filterSelect("Club / organizer", "club", [...new Set(events.map((e) => e.club).filter(Boolean))])}${filterSelect("Major relevance", "major", ["Information Systems", "Business", "Humanities", "Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[
+  const tabs = [
+    ["upcoming", "All upcoming"],
+    ["rsvp", "RSVP’d"],
+    ["past", "Past saved events"],
+  ];
+
+  const tabButtons = tabs.map(([m, l]) =>
+    `<button class="${mode === m ? "active" : ""}"
+      onclick="setMode('${m}')">${l}</button>`
+  ).join("");
+
+  const foodFilters = [
     ["food", "Has food"],
     ["free", "Free events"],
     ["spiritual", "Spiritual"],
-  ]
-    .map(
-      ([k, l]) =>
-        `<label><input type="checkbox" ${filters[k] ? "checked" : ""} onchange="setFilter('${k}',this.checked)"> ${l}</label>`,
-    )
-    .join(
-      "",
-    )}</div><button onclick="clearFilters()">Clear filters</button></div></div>`;
+  ].map(([k, l]) =>
+    `<label><input type="checkbox"
+      ${filters[k] ? "checked" : ""}
+      onchange="setFilter('${k}',this.checked)"> ${l}</label>`
+  ).join("");
+
+  return `
+    <div class="toolbar">
+      <div class="row">
+        <input class="search"
+          aria-label="Search events"
+          placeholder="Search events, clubs, or places…"
+          value="${esc(filters.q)}"
+          oninput="filters.q=this.value;updateResults()">
+
+        <button onclick="filtersOpen=!filtersOpen;render()"
+          aria-expanded="${filtersOpen}">
+          ${icon("sliders-horizontal")}
+          Filters ${Object.values(filters).filter(Boolean).length
+            ? "(" + Object.values(filters).filter(Boolean).length + ")"
+            : ""}
+        </button>
+
+        <button onclick="go(page==='calendar'?'list':'calendar')">
+          ${page === "calendar"
+            ? icon("list") + " List view"
+            : icon("calendar-days") + " Calendar view"}
+        </button>
+      </div>
+
+      <div class="chips">${tabButtons}</div>
+
+      <div class="filters" ${filtersOpen ? "" : "hidden"}>
+        ${filterSelect("Category / type", "category", categories)}
+        ${filterSelect("Location", "location",
+          [...new Set(events.map(e => e.location))])}
+        ${filterSelect("Club / organizer", "club",
+          [...new Set(events.map(e => e.club).filter(Boolean))])}
+        ${filterSelect("Major relevance", "major",
+          ["Information Systems", "Business", "Humanities", "Fine Arts"])}
+
+        <label>From date
+          <input type="date" value="${filters.from}"
+            onchange="setFilter('from',this.value)">
+        </label>
+
+        <label>Through date
+          <input type="date" value="${filters.to}"
+            onchange="setFilter('to',this.value)">
+        </label>
+
+        <div>${foodFilters}</div>
+        <button onclick="clearFilters()">Clear filters</button>
+      </div>
+    </div>`;
 }
+
 function setFilter(k, v) {
   filters[k] = v;
   updateResults();
