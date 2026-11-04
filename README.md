@@ -1,64 +1,93 @@
-# Gather-IS401Product
+# Gather
 
-## RSVP and bookmarks update
+Gather is a BYU campus events website built for IS 401. It brings listings from five BYU sources into one place so students can find activities, see when and where they happen, and make plans with friends.
 
-See [installation, database migration, API and Share handoff](docs/EVENT-PLANS-SETUP.md).
-Existing databases must apply `supabase/migrations/20261102000000_event_plans.sql`
-before running the updated server. Fresh databases can use the updated `schema.sql`.
+## Run Gather locally
 
+You’ll need Node.js 22 or later and access to a Supabase project.
 
-<!-- Maintainer note: Source comments explain each section of server.js and public/. -->
+1. Clone this repository and open the project folder in a terminal.
+2. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+3. Set up the database:
+   - **Team database:** Use the team’s Supabase project settings if the database is already set up.
+   - **New database:** Run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor. Run [`supabase/seed.sql`](supabase/seed.sql) if you want sample events for development.
+   - **Existing database that predates RSVPs and bookmarks:** Apply the [event plans migration](supabase/migrations/20261102000000_event_plans.sql) if it hasn’t already been applied. See the [event plans setup and API guide](docs/EVENT-PLANS-SETUP.md) for details.
+
+4. Copy [`.env.example`](.env.example) to `.env` in the project root. Set the Supabase project URL and the publishable key or legacy `anon` key:
+
+   ```dotenv
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_KEY=your-publishable-key
+   PORT=3000
+   ```
+
+5. Start the app:
+
+   ```bash
+   npm start
+   ```
+
+6. Open [Gather on localhost](http://localhost:3000).
+
+Keep your local `.env` file out of Git.
+
+## Verify the sign-in flow
+
+1. Open Gather, select **Sign in**, and create an account.
+2. Sign in and refresh the page. Your session should stay active.
+3. Sign out and refresh again. You should remain signed out and be able to sign back in.
+
+## Import event listings
+
+The app reads events already stored in Supabase. Importing or refreshing listings is a separate step.
+
+| Source | Script | How it runs |
+| --- | --- | --- |
+| BYU OnStage | [`scrapeOnstage.js`](scrapeOnstage.js) | Writes to Supabase when run. Set the month in the script. |
+| BYU Athletics | [`scrapeAthletics.js`](scrapeAthletics.js) | Writes to Supabase when run. Set the month in the script. |
+| BYU Library Events | [`scrapeLibrary.js`](scrapeLibrary.js) | Previews upcoming events. Add `--save` to write. |
+| BYU Events Calendar | [`scrapeCalendar.js`](scrapeCalendar.js) | Accepts a month in `YYYY-MM` format. Add `--save` to write. |
+| BYUSA | [`scrapeBYUSA.js`](scrapeBYUSA.js) | Accepts a month in `YYYY-MM` format. Add `--save` to write. |
+
+The scrapers require Cheerio. If it isn’t listed in `package.json`, install it with `npm install cheerio`. To save imports, set `SUPABASE_SECRET_KEY` in your local `.env`. Keep this key private and use it only in the import scripts.
+
+If you’re importing into a fresh database, the checked-in schema needs additional changes for the scrapers. The `Events` table needs `EventImage` as nullable `text`, `EventEndTime` as nullable `time`, and `SourceURL` as unique `text`. The team’s shared database already has these fields.
+
+For example, preview the December 2026 BYUSA listings, then save them:
+
+```bash
+node scrapeBYUSA.js 2026-12
+node scrapeBYUSA.js 2026-12 --save
+```
+
+Repeat imports update records with the same `SourceURL`. The same event can still appear more than once if different sources use different URLs.
+
+## Accessibility
+
+On November 4, 2026, the Gather homepage scored **100/100 for Accessibility** in a local Chrome Lighthouse audit, exceeding the project target of 90. The same run scored 96 for Performance, 100 for Best Practices, and 90 for SEO. These scores apply to the homepage tested.
 
 ## Code organization
 
-- `server.js` starts the Node HTTP server, serves static files, validates configuration, and exposes the `/api` routes.
-- `public/index.html` and `public/app.js` provide the original home/dynamic shell during the page-separation migration.
-- `public/events.html` and `public/events.js` implement the standalone Events page at `/events`.
-- `public/login.html`, `public/signup.html`, and `public/auth.js` implement standalone authentication at `/login` and `/signup`, using the existing Supabase Auth API and demo profiles.
-- `public/styles.css` contains the shared visual system and responsive layouts.
-- `supabase/schema.sql` creates the tables and authentication profile trigger.
-- `supabase/seed.sql` is optional development data for a new or empty database.
+| File or folder | Purpose |
+| --- | --- |
+| `server.js` | Starts the Node.js server, serves static files, and handles API routes. |
+| `public/index.html` and `public/app.js` | Provide the homepage and shared app shell. |
+| `public/events.html` and `public/events.js` | Implement the Events page at `/events`. |
+| `public/login.html`, `public/signup.html`, and `public/auth.js` | Implement sign-in and account creation. |
+| `public/styles.css` | Provides shared styles and responsive layouts. |
+| `supabase/` | Contains the database schema, migrations, and optional seed data. |
 
-# App Summary:
+Gather uses HTML, CSS, and JavaScript for the frontend, Node.js for the server, and Supabase for PostgreSQL and authentication. The event scrapers use Cheerio to read event listings from source pages.
 
-We identified a group of people similar to Kaleb who want to go to more campus and local activities and events.
-Oftentimes, people like Kaleb are only willing to go to activities if it meets certain criteria (has food, if friends want/can).
-Additionally, it can be hard for Caleb and his friends to find relevant activities, their locations, time, and other information about the events
-since they are often posted in a plethora of different sites and physical advertisements.
+## Database relationships
 
-# ERD: 
-<img width="1710" height="1107" alt="Screenshot 2026-10-07 at 3 57 01 PM" src="https://github.com/user-attachments/assets/b8ab864f-8352-45f6-9083-1221c3c2c010" />
+Gather stores user profiles in `User` and event listings in `Events`. The `Bookmark` and `RSVP` tables connect users to events. A linking table connects events to categories, allowing one event to belong to multiple categories. The `Friends` table connects one user profile to another.
 
-# Techstack:
+![Entity relationship diagram for Gather’s events, user profiles, categories, bookmarks, RSVPs, and friendships](https://github.com/user-attachments/assets/b8ab864f-8352-45f6-9083-1221c3c2c010)
 
-- **HTML** – Structures the website and its content.
-- **CSS** – Handles styling, layout, and responsive design.
-- **JavaScript** – Adds interactivity and manages frontend logic.
-- **Node.js** – Handles backend logic and server-side functionality.
-- **Supabase** – Provides the PostgreSQL database, authentication, and backend services.
-
-This stack fits our team because it uses familiar web technologies, keeps development simple, and gives us the tools needed to build both the frontend and backend without unnecessary complexity.
-
-
-# How to Get It Running:
-
-- Download the files
-- Run npm install inside the terminal to ensure everythings downloaded
-- Create a supabase and run schema.sql and seed.sql inside the SQL Editor on Supabase
-- create a local .env file within the main folder
-- create 2 keys "SUPABASE_URL = 'SUPABASE URL' and SUPABASE_KEY = 'SUPABASE PUBLICATION KEY URL'
-- this connects the site to your supabase
-
-- run "node --env-file=.env server.js" in terminal to start the site locally in "SUPABASE Mode"
-- It should be running locally now! :)
-
-# Verifying the Vertical Slice:
-
-- Click the sign in button in the top right corner of the screen
-- Select the create a new account option
-- Create your account
-- Once the account is created, refresh your page
-- You should still be signed in
-- If you log out and refresh your page you should also be able to log back in regardless of the page refresh
-
-
+See the [database schema](supabase/schema.sql) and [event plans migration](supabase/migrations/20261102000000_event_plans.sql) for the table definitions.
