@@ -30,6 +30,7 @@ let month = new Date(today.getFullYear(), today.getMonth(), 1);
 let selectedDay = "";
 let backendMode = "demo";
 let stateReady = false;
+let planLoadError = "";
 let detailId = null;
 
 // Keep all linked categories available to filters and labels; old fixtures
@@ -63,8 +64,8 @@ function persistDemo() {
 }
 function requireAccount() {
   if (backendMode === "demo") return true;
-  if (!data.user) { closeModal(); location.assign("/login"); return false; }
   if (!stateReady) { toast("Your plans have not loaded. Reload to try again."); return false; }
+  if (!data.user) { closeModal(); location.assign("/login"); return false; }
   return true;
 }
 function toggleMenu() { const open=$("drawer").hidden; $("drawer").hidden=!open; $("menuButton").setAttribute("aria-expanded",String(open)); }
@@ -84,7 +85,7 @@ function options(values, current) { return `<option value="">All</option>`+value
 function filterSelect(label, keyName, values) { return `<label>${label}<select onchange="setFilter('${keyName}',this.value)">${options(values,filters[keyName])}</select></label>`; }
 function renderToolbar() {
   const categoryValues=[...new Set(events.flatMap(eventCategories))].sort();
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["saved","Bookmarked"],["rsvp","RSVP’d"],["past","Past events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${filterSelect("Category / type","category",categoryValues)}${filterSelect("Location","location",[...new Set(events.map((e)=>e.location))])}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["food","Has food"],["free","Free events"],["spiritual","Spiritual"]].map(([keyName,label)=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["saved","Bookmarked"],["rsvp","RSVP’d"],["past","Past events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${filterSelect("Category / type","category",categoryValues)}${filterSelect("Location","location",[...new Set(events.map((e)=>e.location))])}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["food","Has food"],["free","Free events"],["spiritual","Spiritual"]].map(([keyName,label])=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
   icons();
 }
 // Display switching: toggling changes the URL as well as the rendered page.
@@ -97,17 +98,18 @@ function planButton(kind, event, compact = false) {
   const saved = kind === "bookmark";
   const selected = data[saved ? "saved" : "rsvp"].includes(event.id);
   const pending = plans.busy(kind, event.id);
+  const notReady = backendMode === "supabase" && !stateReady;
   const unavailable = !saved && ended(event) && !selected;
   const label = saved
     ? `${selected ? "Remove bookmark for" : "Bookmark"} ${event.name}`
     : `${selected ? "Cancel RSVP for" : "RSVP to"} ${event.name}`;
   return `<button type="button" class="${saved ? "event-bookmark" : "event-rsvp"}"
     data-plan-kind="${kind}" data-event-id="${esc(event.id)}"
-    aria-label="${esc(label)}" title="${esc(label)}" aria-pressed="${selected}"
-    aria-busy="${pending}" ${pending || unavailable ? "disabled" : ""}
+    aria-label="${esc(label)}" title="${esc(notReady ? "Reload to load your plans" : label)}" ${notReady ? "" : `aria-pressed="${selected}"`}
+    aria-busy="${pending}" ${pending || unavailable || notReady ? "disabled" : ""}
     onclick="${saved ? "bookmark" : "rsvp"}('${event.id}')">
     ${icon(saved ? selected ? "bookmark-check" : "bookmark" : selected ? "check" : "user-check")}
-    ${saved && compact ? "" : `<span>${pending ? "Saving…" : saved ? selected ? "Saved" : "Save" : unavailable ? "Event ended" : selected ? "Going" : "Going?"}</span>`}
+    ${saved && compact ? "" : `<span>${notReady ? "Unavailable" : pending ? "Saving…" : saved ? selected ? "Saved" : "Save" : unavailable ? "Event ended" : selected ? "Going" : "Going?"}</span>`}
   </button>`;
 }
 
@@ -146,7 +148,8 @@ function selectDay(date) { selectedDay=date; renderResults(); $("dayList")?.scro
 function renderResults() {
   if(filters.from&&filters.to&&filters.from>filters.to){$("results").innerHTML='<div class="empty" role="alert">The end date must be on or after the start date.</div>';$("resultCount").textContent="0 events";return;}
   const list=filteredEvents(); $("resultCount").textContent=`${list.length} event${list.length===1?"":"s"}`;
-  $("results").innerHTML=view=== "calendar"?calendar(list):list.length?`<div class="list">${list.map(card).join("")}</div>`:'<div class="empty"><h3>No events match current filters</h3><p class="muted">Try a different date or clear your filters.</p><button onclick="clearFilters()">Clear filters</button></div>';
+  const notice = planLoadError ? `<div class="notice" role="status">Events are available, but your account plans could not be loaded. ${esc(planLoadError)} <button onclick="boot()">Retry account</button></div>` : "";
+  $("results").innerHTML=notice + (view=== "calendar"?calendar(list):list.length?`<div class="list">${list.map(card).join("")}</div>`:'<div class="empty"><h3>No events match current filters</h3><p class="muted">Try a different date or clear your filters.</p><button onclick="clearFilters()">Clear filters</button></div>');
   icons();
 }
 
@@ -189,26 +192,28 @@ async function boot() {
       data = { saved: [], rsvp: [], user: null, friends: [] };
       stateReady = false;
 
-      // Load the session first so the profile avatar updates independently.
-      const session = await api("/auth/session");
-      data.user = session.user;
-      renderUserProfile();
-
-      if (data.user) {
-        const result = await api("/state");
-        if (result.accountId !== data.user.id) {
-          throw Error("Your account changed. Reload to load its plans.");
-        }
-        data = { ...data, ...result.state, user: session.user };
-      }
-      stateReady = true;
-
-      // Retain the actual event fields from the server, including linked categories.
-      const listing = await api("/events");
-      events = listing.events.map((event) => ({
-        ...event,
-        poster: event.poster || categoryLabel(event).toUpperCase(),
+      planLoadError = "";
+      // Public events must not depend on whether account services are healthy.
+      const [listingResult, sessionResult] = await Promise.allSettled([
+        api("/events"), api("/auth/session"),
+      ]);
+      if (listingResult.status === "rejected") throw listingResult.reason;
+      events = listingResult.value.events.map(event => ({
+        ...event, poster: event.poster || categoryLabel(event).toUpperCase(),
       }));
+      if (sessionResult.status === "fulfilled") {
+        data.user = sessionResult.value.user;
+        if (data.user) {
+          try {
+            const result = await api("/state");
+            if (result.accountId !== data.user.id)
+              throw Error("Your account changed. Reload to load its plans.");
+            data = { ...data, ...result.state, user: data.user };
+            stateReady = true;
+          } catch (error) { planLoadError = error.message; }
+        } else stateReady = true;
+      } else planLoadError = sessionResult.reason.message;
+      renderUserProfile();
       $("footerMode").textContent = data.user
         ? "Connected to Supabase · Your personal plans"
         : "Connected to Supabase · Sign in to save plans";

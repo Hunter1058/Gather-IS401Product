@@ -9,9 +9,10 @@
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
-import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
+import { authSessions } from "./lib/auth-session.js";
+import { isSameOrigin } from "./lib/request-origin.js";
 import { planInput, profileId, readPlans, writePlan } from "./lib/event-plans.js";
 
 // Server and Supabase configuration. Supabase credentials must be provided together.
@@ -20,7 +21,7 @@ const port = Number(process.env.PORT || 3000);
 const supabaseUrl = process.env.SUPABASE_URL;
 const publishableKey = process.env.SUPABASE_KEY;
 const configured = Boolean(supabaseUrl && publishableKey);
-const production = process.env.NODE_ENV === "production";
+const production = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
 
 if (Boolean(supabaseUrl) !== Boolean(publishableKey))
   throw Error("Set both SUPABASE_URL and SUPABASE_KEY, or neither for demo mode.");
@@ -42,14 +43,14 @@ const makeClient = () =>
   });
 const publicClient = configured ? makeClient() : null;
 
-// Session and login-attempt storage is in server memory and expires automatically.
-const sessions = new Map(), attempts = new Map();
-const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
-
+// Request-scoped clients restore verified sessions on any Vercel instance.
+const sessionCookies = authSessions(makeClient, { secure: production });
+// Best-effort per-worker throttle; production-wide abuse limits belong at the
+// platform/Supabase layer rather than relying on this process-local counter.
+const attempts = new Map();
 setInterval(() => {
-  const now = Date.now();
-  for (const [id, s] of sessions) if (now - s.seen > SESSION_TTL) sessions.delete(id);
-  for (const [id, s] of attempts) if (now - s.since > 15 * 60 * 1000) attempts.delete(id);
+  for (const [id, attempt] of attempts)
+    if (Date.now() - attempt.since > 15 * 60 * 1000) attempts.delete(id);
 }, 60000).unref();
 
 const userView = (u) =>
@@ -65,32 +66,6 @@ function json(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function cookie(id, maxAge = 604800) {
-  return `gather_session=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${production ? "; Secure" : ""}`;
-}
-
-function sid(req) {
-  return /(?:^|;\s*)gather_session=([a-f0-9]{64})(?:;|$)/.exec(req.headers.cookie || "")?.[1];
-}
-
-// Session validation verifies that the signed-in browser still has a valid token.
-async function signedIn(req) {
-  let id = sid(req), session = sessions.get(id);
-  if (!session || Date.now() - session.seen > SESSION_TTL) return null;
-  const { data: sd, error: se } = await session.client.auth.getSession();
-  if (se || !sd.session) {
-    sessions.delete(id);
-    return null;
-  }
-  const { data, error } = await session.client.auth.getUser();
-  if (error || !data.user) {
-    sessions.delete(id);
-    return null;
-  }
-  session.seen = Date.now();
-  return { ...session, user: data.user };
-}
-
 async function body(req) {
   let size = 0, chunks = [];
   for await (const chunk of req) {
@@ -103,12 +78,6 @@ async function body(req) {
   } catch {
     throw Object.assign(Error("Invalid JSON."), { status: 400 });
   }
-}
-
-function isSameOrigin(req) {
-  const origin = req.headers.origin;
-  if (!origin) return req.headers["sec-fetch-site"] !== "cross-site";
-  return origin === (process.env.APP_ORIGIN || `http://${req.headers.host}`);
 }
 
 // Main HTTP server: static files, API routes, authentication, and state storage.
@@ -191,32 +160,30 @@ export const server = http.createServer(async (req, res) => {
         if (result.error) return json(res, 400, { error: result.error.message });
         if (!result.data.session) return json(res, 200, { user: null, message: "Check your email." });
 
-        const old = sid(req);
-        if (old) sessions.delete(old);
-        const id = randomBytes(32).toString("hex");
-        sessions.set(id, { client, seen: Date.now() });
-        res.setHeader("Set-Cookie", cookie(id));
+        sessionCookies.save(res, result.data.session);
         return json(res, 200, { user: userView(result.data.user) });
       }
 
       // Sign-out invalidates the server session and clears the browser cookie.
       if (route === "/auth/logout" && req.method === "POST") {
-        const id = sid(req), session = sessions.get(id);
-        if (session) await session.client.auth.signOut({ scope: "local" });
-        sessions.delete(id);
-        res.setHeader("Set-Cookie", cookie("", 0));
+        const session = await sessionCookies.restore(req, res);
+        if (session) {
+          const { error } = await session.client.auth.signOut({ scope: "local" });
+          if (error) throw Object.assign(Error("Unable to sign out. Try again."), { status: 503 });
+        }
+        sessionCookies.clear(res);
         return json(res, 200, { ok: true });
       }
 
       // Restore an account from the browser session on page refresh.
       if (route === "/auth/session" && req.method === "GET") {
-        const session = await signedIn(req);
+        const session = await sessionCookies.restore(req, res);
         return json(res, 200, { user: userView(session?.user) });
       }
 
       // Read-only aggregate for the existing Saved/home pages.
       if (route === "/state") {
-        const session = await signedIn(req);
+        const session = await sessionCookies.restore(req, res);
         if (!session) return json(res, 401, { error: "Please sign in again." });
         if (req.method !== "GET") {
           res.setHeader("Allow", "GET");
@@ -233,7 +200,7 @@ export const server = http.createServer(async (req, res) => {
           res.setHeader("Allow", "PUT");
           return json(res, 405, { error: "Use PUT to update this event." });
         }
-        const session = await signedIn(req);
+        const session = await sessionCookies.restore(req, res);
         if (!session) return json(res, 401, { error: "Sign in to save your plans." });
         if (req.headers["x-gather-account"] && req.headers["x-gather-account"] !== session.user.id)
           return json(res, 409, { error: "Your account changed in another tab. Reload before saving." });
@@ -269,7 +236,7 @@ export const server = http.createServer(async (req, res) => {
 });
 
 export default function handler(req, res) {
-  server.emit("request", req, res);
+  return server.listeners("request")[0](req, res);
 }
 
 if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {

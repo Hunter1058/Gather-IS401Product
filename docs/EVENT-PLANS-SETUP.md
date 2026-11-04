@@ -83,10 +83,17 @@ Open `http://localhost:3000/events`, sign in using an actual Supabase account,
 and test the buttons. In production, set `APP_ORIGIN` to the exact HTTPS origin
 and `NODE_ENV=production` for secure session cookies.
 
-Sessions retain the existing in-memory server design. Server restarts can
-require sign-in again; the plans themselves stay in Supabase and reload after
-sign-in. Multiple server instances would need shared session storage, which is
-outside this change.
+Sessions use HttpOnly cookies carrying Supabase access/refresh tokens. Each
+request creates its own client, restores/refreshes the session as needed, and
+verifies the user with Supabase before reading or writing account data. Login
+survives Vercel worker changes and restarts. The browser never receives tokens
+in API JSON or JavaScript-readable storage. Existing in-memory session cookies
+are obsolete; sign in once after deploying the session fix. See
+`docs/DEPLOYMENT-FIX.md` for the Vercel configuration and validation steps.
+
+The remaining per-worker login-attempt counter is a best-effort throttle, not
+a shared production rate limiter. Use Vercel/Supabase abuse controls for limits
+that must apply across workers.
 
 ## 3. Verify with two accounts
 
@@ -107,7 +114,7 @@ outside this change.
 
 ## API contract
 
-Requests use the existing HttpOnly session cookie. Set `X-Gather-Account` to the
+Requests use HttpOnly access/refresh cookies managed by the server. Set `X-Gather-Account` to the
 Auth account ID currently shown in the page to reject writes from stale tabs
 that are displaying a different account. This is a consistency check, not an
 identity credential: the server always uses the verified session.

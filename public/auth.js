@@ -39,7 +39,7 @@ async function api(path, options = {}) {
     ...options,
   });
   const body = await res.json();
-  if (!res.ok) throw Error(body.error || "Unable to complete that request.");
+  if (!res.ok) throw Object.assign(Error(body.error || "Unable to complete that request."), { status: res.status });
   return body;
 }
 function demoAuth(signup = false) {
