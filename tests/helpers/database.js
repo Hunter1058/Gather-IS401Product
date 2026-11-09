@@ -5,12 +5,13 @@ export const USER_B = '22222222-2222-4222-8222-222222222222';
 export function database() {
   const rows = {
     User: [{ UserID: USER_A }, { UserID: USER_B }],
-    Events: [{ EventID: '1' }, { EventID: '2' }], Bookmark: [], RSVP: [],
+    Events: [{ EventID: '1' }, { EventID: '2' }], EventCategory: [], Bookmark: [], RSVP: [],
   };
   const errors = new Map();
   const calls = [];
   const client = {
     from(table) {
+      assert.ok(Object.hasOwn(rows, table), `Missing fixture data for table ${table}`);
       let operation = 'select', payload, filters = [], singular = false, projection;
       const q = {
         select(value) { projection = value; return q; },
