@@ -133,7 +133,10 @@ function go(p) {
   selectedDay = "";
   $("drawer").hidden = true;
   $("menuButton").setAttribute("aria-expanded", "false");
+  if (location.protocol !== "file:")
+    history.replaceState(null, "", p === "friends" ? "/#friends" : p === "saved" ? "/#saved" : "/");
   render();
+  if (p === "friends" && backendMode === "supabase" && data.user && !booting) void friendActions.load();
   window.scrollTo(0, 0);
 }
 function setMode(m) {
@@ -544,18 +547,33 @@ function saveSurvey(ev, id) {
   toast("Your reflection has been saved");
 }
 
-// Friends and interests page rendered inside the current shell.
+// Stable friend data/control attributes are the handoff to the UI coworker.
+function friendCard(person, state) {
+  const labels = { none: "Send request", outgoing_pending: "Cancel request", friends: "Remove friend", incoming_pending: "Request received" };
+  const descriptions = { none: "", outgoing_pending: "Request sent", friends: "Friends", incoming_pending: "This person has sent you a request." };
+  const disabled = state.loading || !state.ready || state.accountChanged || person.pending || Boolean(person.error) || person.relationship === "incoming_pending";
+  const label = person.pending ? ({ send: "Sending…", cancel: "Cancelling…", remove: "Removing…", refresh: "Refreshing…" })[person.pendingAction] : labels[person.relationship];
+  const initials = person.name.trim().split(/\s+/).map(part => Array.from(part)[0]).slice(0, 2).join("").toUpperCase() || "M";
+  return `<article class="card friend" data-person-id="${person.id}"><span class="avatar" aria-hidden="true">${esc(initials)}</span><div class="info" style="min-width:0;overflow-wrap:anywhere"><h3 tabindex="-1" data-friend-heading="${person.id}">${esc(person.name)}</h3>${person.username ? `<p class="muted">@${esc(person.username)}</p>` : ""}<p class="muted" data-friend-status="${person.relationship}" role="status">${descriptions[person.relationship]}</p>${person.error ? `<p class="error" role="alert">${esc(person.error)}</p>` : ""}</div><div class="friend-controls row"><button type="button" data-friend-user-id="${person.id}" data-friend-control="action" aria-label="${esc(label + " — " + person.name)}" aria-busy="${person.pending}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}')">${esc(label)}</button>${person.error ? `<button type="button" data-friend-user-id="${person.id}" data-friend-control="refresh" ${person.pending || state.accountChanged ? "disabled" : ""} onclick="refreshFriend('${person.id}')">Refresh status</button>` : ""}</div></article>`;
+}
 function friendsPage() {
-  return `<div class="eyebrow">Better with company</div><h1>Your people. Your interests.</h1><p class="muted">Keep a list of friends and discover what you have in common.</p><div class="notice">Demo profiles and activity are fictional. Adding a friend here does not send an invitation.</div><div class="grid">${["Emma", "Noah", "Sofia", "Liam", "Olivia", "Ethan"].map((n, i) => `<div class="card friend"><span class="avatar">${n[0]}</span><div class="info"><h3>${n}</h3><p class="muted">${["Social & service", "Sports & technology", "Arts & culture"][i % 3]}</p></div><button onclick="toggleFriend('${n}')">${data.friends.includes(n) ? "✓ Added · Remove" : "+ Add friend"}</button></div>`).join("")}</div><div class="prefs"><h2>What are you into?</h2><p class="muted">These interests shape your home page recommendations.</p><div class="chips">${categories.map((c) => `<button class="${data.interests.includes(c) ? "active" : ""}" aria-pressed="${data.interests.includes(c)}" onclick="toggleInterest(${esc(JSON.stringify(c))})">${esc(c)}</button>`).join("")}</div></div>`;
+  const heading = '<div class="eyebrow">Better with company</div><h1>Your people.</h1><p class="muted">Connect with people on Gather.</p>';
+  if (booting) return heading + '<p role="status">Loading your account…</p>';
+  if (backendMode !== "supabase") return heading + '<p class="notice">Friend requests require a connected account.</p>';
+  if (!data.user) return heading + '<div class="notice">Sign in to connect with people. <button onclick="go(\'login\')">Sign in</button></div>';
+  const state = friendActions.view();
+  const notice = state.error ? `<div class="notice" role="alert">${esc(state.error)} <button onclick="${state.accountChanged ? "location.reload()" : "refreshPeople()"}">${state.accountChanged ? "Reload page" : "Retry"}</button></div>` : "";
+  const content = state.people.length ? `<div class="grid">${state.people.map(person => friendCard(person, state)).join("")}</div>`
+    : state.ready ? '<div class="empty">No other people are available yet.</div>' : '';
+  return heading + `<div class="row"><button type="button" id="friendsRefresh" onclick="refreshPeople()" ${state.loading || friendActions.hasPending() || state.accountChanged ? "disabled" : ""}>Refresh people</button></div>` + notice
+    + (state.loading || (!state.ready && !state.error) ? '<p role="status">Loading people…</p>' : '') + content
+    + (state.hasMore ? `<button type="button" id="friendsMore" onclick="loadMorePeople()" ${state.loading || !state.ready || friendActions.hasPending() ? "disabled" : ""}>Load more people</button>` : '')
+    + `<div class="prefs"><h2>Event interests</h2><div class="chips">${categories.map(c => `<button class="${data.interests.includes(c) ? "active" : ""}" aria-pressed="${data.interests.includes(c)}" onclick="toggleInterest(${esc(JSON.stringify(c))})">${esc(c)}</button>`).join("")}</div></div>`;
 }
-function toggleFriend(n) {
-  if (!requireAccount()) return;
-  data.friends.includes(n)
-    ? (data.friends = data.friends.filter((x) => x !== n))
-    : data.friends.push(n);
-  persist();
-  render();
-}
+function friendAction(id) { return friendActions.act(id); }
+function refreshFriend(id) { return friendActions.refreshPerson(id); }
+function refreshPeople() { return friendActions.load(); }
+function loadMorePeople() { return friendActions.load(true); }
 function toggleInterest(c) {
   if (!requireAccount()) return;
   data.interests.includes(c)
@@ -708,7 +726,7 @@ async function api(path, options = {}) {
     ...options,
   });
   const body = await res.json();
-  if (!res.ok) throw Error(body.error || "Unable to complete that request.");
+  if (!res.ok) throw Object.assign(Error(body.error || "Unable to complete that request."), { status: res.status, code: body.code });
   return body;
 }
 function persist() {
@@ -752,6 +770,7 @@ async function loadState() {
   stateReady = true;
 }
 async function boot() {
+  booting = true;
   const legacyPage = location.hash.slice(1);
   if (["login", "signup"].includes(legacyPage)) {
     location.replace("/" + legacyPage);
@@ -785,11 +804,18 @@ async function boot() {
         }
 
         // Load events separately so failures cannot hide the signed-in profile.
-        const listing = await api("/events");
-        events = listing.events;
-        categories = [...new Set(events.flatMap(eventCategories))];
+        try {
+          const listing = await api("/events");
+          events = listing.events;
+          categories = [...new Set(events.flatMap(eventCategories))];
+        } catch (error) {
+          if (page !== "friends") throw error;
+          // Event discovery and personal event preferences do not gate friends.
+          events = []; categories = [];
+        }
       }
     } catch (e) {
+      booting = false;
       $("app").innerHTML =
         '<div class="empty"><h2>We couldn’t load Gather.</h2><p>Check the server connection and Supabase configuration, then try again.</p><button onclick="boot()">Try again</button></div>';
       return;
@@ -797,6 +823,7 @@ async function boot() {
   }
   booting = false;
   render();
+  if (page === "friends" && backendMode === "supabase" && data.user) await friendActions.load();
   if (location.hash.startsWith("#event="))
     openEvent(decodeURIComponent(location.hash.slice(7)));
 }
@@ -808,7 +835,7 @@ window.addEventListener("hashchange", () => {
   else if (["saved", "friends"].includes(target)) go(target);
 });
 window.addEventListener("beforeunload", (e) => {
-  if (backendMode === "supabase" && (plans.hasPending() || syncFailed)) {
+  if (backendMode === "supabase" && (plans.hasPending() || friendActions.hasPending() || syncFailed)) {
     /* Browsers may warn only after user interaction. */ e.preventDefault();
     e.returnValue = "";
   }
@@ -823,5 +850,11 @@ const plans = window.GatherPlans.create({
     render();
     if ($("modal").open && detailId) openEvent(detailId);
   },
+});
+const friendActions = window.GatherFriends.create({
+  request: api, account: () => data.user?.id,
+  changed: () => { if (page === "friends") render(); },
+  notify: toast, login: () => go("login"),
+  confirmRemove: person => window.confirm(`Remove ${person.name} from your friends?`),
 });
 boot();

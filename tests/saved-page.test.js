@@ -44,6 +44,7 @@ test('Saved deep link filters to bookmarks and removes a card after unsaving', a
   context.window = context;
   vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
   vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(await readFile(new URL('../public/friend-actions.js', import.meta.url), 'utf8'), context);
   // Expose the real boot promise so this test waits for state loading/rendering.
   const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
     .replace(/boot\(\);\s*$/, 'globalThis.bootPromise = boot();');
