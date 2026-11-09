@@ -113,16 +113,26 @@ test('guest cannot save, and failed initial state is never treated as empty succ
 });
 
 
-test('secondary linked categories appear in labels and both category filters', async () => {
+test('category checkboxes match any selected linked category and clear correctly', async () => {
   const page = await pageFixture();
   assert.match(page.element('results').innerHTML, /event-arts[^>]*>Arts<\/span>.*event-spiritual[^>]*>Spiritual<\/span>/s);
-  assert.match(page.element('toolbar').innerHTML, /<option[^>]*>Spiritual<\/option>/);
-  page.run('setFilter("category", "Spiritual")');
+  assert.match(page.element('toolbar').innerHTML,
+    /<input[^>]*type="checkbox"[^>]*value="Spiritual"[^>]*onchange="toggleCategory\(this.value,this.checked\)"/);
+  page.run('toggleCategory("Spiritual", true)');
+  assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/,
+    'selecting a secondary linked category includes the event');
+  page.run('toggleCategory("Sports", true)');
+  assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/,
+    'multiple selected categories match any category rather than requiring all');
+  page.run('toggleCategory("Spiritual", false)');
+  assert.match(page.element('results').innerHTML, /No events match/,
+    'only the nonmatching category remains selected');
+  page.run('toggleCategory("Sports", false)');
+  assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/,
+    'unchecking all categories restores the event');
+  page.run('toggleCategory("Sports", true); clearFilters()');
+  assert.equal(page.run('Array.isArray(filters.category) && filters.category.length === 0'), true);
   assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/);
-  page.run('setFilter("spiritual", true)');
-  assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/);
-  page.run('setFilter("category", "Sports")');
-  assert.match(page.element('results').innerHTML, /No events match/);
 });
 
 
