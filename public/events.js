@@ -59,7 +59,23 @@ function icons() { window.lucide?.createIcons(); }
 function toast(message) { const el=$("toast"); el.textContent=message; clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.textContent="",3500); }
 function categoryClass(event) { return "category-"+({ Social:"social", Arts:"arts", Culture:"culture", Service:"service", Spiritual:"spiritual" }[event.category]||"primary"); }
 function categoryIcon(event) { return ({ Social:"party-popper", Arts:"music-2", Career:"lightbulb", Service:"heart-handshake", Sports:"trophy", Culture:"globe-2", Spiritual:"sun" }[event.category]||"calendar-days"); }
-function poster(event, extra="") { return `<div class="poster ${categoryClass(event)} ${extra}" role="img" aria-label="Flyer for ${esc(event.name)}"><span class="shape">${icon(categoryIcon(event))}</span><small>${esc(event.club || "Not Specified")} · ${pretty(event.date)}</small><strong>${esc(event.poster||categoryLabel(event).toUpperCase())}</strong></div>`; }
+function poster(event, extra = "") {
+  const classes = `poster ${categoryClass(event)} ${extra}`;
+  const imageUrl = event.imageUrl?.trim();
+  if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
+    return `
+      <div class="${classes} event-photo-poster">
+        <img src="${esc(imageUrl)}" alt="" loading="lazy">
+      </div>`;
+  }
+
+  return `
+    <div class="${classes}" role="img" aria-label="Flyer for ${esc(event.name)}">
+      <span class="shape">${icon(categoryIcon(event))}</span>
+      <small>${esc(event.club || "Not Specified")} · ${pretty(event.date)}</small>
+      <strong>${esc(event.poster || categoryLabel(event).toUpperCase())}</strong>
+    </div>`;
+}
 
 // Server communication: API responses use JSON and session cookies.
 async function api(path, options={}) {
