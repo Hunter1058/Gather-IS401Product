@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { authSessions } from "./lib/auth-session.js";
 import { isSameOrigin } from "./lib/request-origin.js";
+import { people, userId, friendBody, sendRequest, cancelRequest, removeFriend } from "./lib/friends.js";
 import { planInput, profileId, readPlans, writePlan } from "./lib/event-plans.js";
 
 // Server and Supabase configuration. Supabase credentials must be provided together.
@@ -191,6 +192,33 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 200, { user: userView(session?.user) });
       }
 
+      // Friend actions use the verified per-request account client. The header
+      // protects against acting from a tab showing a different signed-in user.
+      if (route.startsWith("/friends/")) {
+        const session = await sessionCookies.restore(req, res);
+        if (!session) return json(res, 401, { error: "Sign in to manage friendships." });
+        const expected = req.headers["x-gather-account"];
+        if ((expected && expected !== session.user.id) || (req.method !== "GET" && expected !== session.user.id))
+          return json(res, 409, { error: "Your account changed. Reload the page before changing friendships.", code: "ACCOUNT_CHANGED" });
+        if (route === "/friends/people" && req.method === "GET")
+          return json(res, 200, { accountId: session.user.id, ...await people(session.client, url.searchParams) });
+        if (route === "/friends/requests" && req.method === "POST") {
+          const recipient = friendBody(await body(req), true);
+          return json(res, 200, { accountId: session.user.id, person: await sendRequest(session.client, session.user.id, recipient) });
+        }
+        const cancellation = /^\/friends\/requests\/([^/]+)$/.exec(route);
+        if (cancellation && req.method === "DELETE") {
+          friendBody(await body(req));
+          return json(res, 200, { accountId: session.user.id, person: await cancelRequest(session.client, session.user.id, cancellation[1]) });
+        }
+        const removal = /^\/friends\/([^/]+)$/.exec(route);
+        if (removal && req.method === "DELETE") {
+          friendBody(await body(req));
+          return json(res, 200, { accountId: session.user.id, person: await removeFriend(session.client, session.user.id, userId(removal[1])) });
+        }
+        return json(res, 405, { error: "Unsupported friendship operation." });
+      }
+
       // Read-only aggregate for the existing Saved/home pages.
       if (route === "/state") {
         const session = await sessionCookies.restore(req, res);
@@ -241,7 +269,7 @@ export const server = http.createServer(async (req, res) => {
     }
   } catch (e) {
     console.error("Request failed:", e.code || e.name || "Error");
-    return json(res, e.status || 500, { error: e.status ? e.message : "The request could not be completed." });
+    return json(res, e.status || 500, { error: e.status ? e.message : "The request could not be completed.", ...(e.status && e.code ? { code: e.code } : {}) });
   }
 });
 
