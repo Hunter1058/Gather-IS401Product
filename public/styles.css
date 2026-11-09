@@ -1734,3 +1734,16 @@ footer {
 .filters .category-dropdown .category-options label {
   color: #172033;
 }
+
+
+.event-photo-poster {
+  position: relative;
+}
+
+.event-photo-poster > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

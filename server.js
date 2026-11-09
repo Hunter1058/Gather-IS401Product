@@ -101,8 +101,7 @@ export const server = http.createServer(async (req, res) => {
       if (route === "/events" && req.method === "GET") {
         const { data, error } = await publicClient
           .from("Events")
-          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, CampusLocation, categoryLinks:Event_Category_Linking_Table(category:EventCategory(EventCatagory))")
-          .order("EventDate", { ascending: true })
+          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, EventImage, CampusLocation, categoryLinks:Event_Category_Linking_Table(category:EventCategory(EventCatagory))")          .order("EventDate", { ascending: true })
           .limit(500);
         
         if (error) throw error;
@@ -136,6 +135,7 @@ export const server = http.createServer(async (req, res) => {
               date: r.EventDate,
               start: r.EventTime,
               description: r.EventDescription,
+              imageUrl: r.EventImage || null, 
               end: null,
               club: null,
               major: null,
