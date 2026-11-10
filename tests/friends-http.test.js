@@ -48,7 +48,7 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
     const a = await login('a@example.test'), b = await login('b@example.test'), c = await login('c@example.test');
     const listing = await call('/people?limit=1', a, A); assert.equal(listing.status, 200);
     const page = await listing.json(); assert.equal(page.accountId, A); assert.equal(page.nextCursor, B);
-    assert.deepEqual(Object.keys(page.people[0]).sort(), ['id', 'name', 'relationship', 'requestId', 'username']);
+    assert.deepEqual(Object.keys(page.people[0]).sort(), ['id', 'isPrivate', 'name', 'photoUrl', 'relationship', 'requestId', 'username']);
     assert(!JSON.stringify(page).includes('private-target')); assert(!JSON.stringify(page).includes('do-not-expose'));
     assert.equal((await call('/people?limit=51', a, A)).status, 400);
     assert.equal((await call('/requests', a, null, 'POST', { recipientId: B })).status, 409);
@@ -79,7 +79,7 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
     assert.equal((await call('/' + B, a, A, 'DELETE', {})).status, 200);
     const wrongAccount = await call('/requests', b, A, 'POST', { recipientId: C });
     assert.equal(wrongAccount.status, 409); assert.equal((await wrongAccount.json()).code, 'ACCOUNT_CHANGED');
-    db.errors.set('get_friend_people', 'PGRST202');
+    db.errors.set('search_friend_people', 'PGRST202');
     assert.equal((await call('/people', a, A)).status, 503);
     db.errors.clear();
     db.errors.set('send_friend_request', 'XX000');

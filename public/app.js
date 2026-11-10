@@ -554,7 +554,10 @@ function friendCard(person, state) {
   const disabled = state.loading || !state.ready || state.accountChanged || person.pending || Boolean(person.error) || person.relationship === "incoming_pending";
   const label = person.pending ? ({ send: "Sending…", cancel: "Cancelling…", remove: "Removing…", refresh: "Refreshing…" })[person.pendingAction] : labels[person.relationship];
   const initials = person.name.trim().split(/\s+/).map(part => Array.from(part)[0]).slice(0, 2).join("").toUpperCase() || "M";
-  return `<article class="card friend" data-person-id="${person.id}"><span class="avatar" aria-hidden="true">${esc(initials)}</span><div class="info" style="min-width:0;overflow-wrap:anywhere"><h3 tabindex="-1" data-friend-heading="${person.id}">${esc(person.name)}</h3>${person.username ? `<p class="muted">@${esc(person.username)}</p>` : ""}<p class="muted" data-friend-status="${person.relationship}" role="status">${descriptions[person.relationship]}</p>${person.error ? `<p class="error" role="alert">${esc(person.error)}</p>` : ""}</div><div class="friend-controls row"><button type="button" data-friend-user-id="${person.id}" data-friend-control="action" aria-label="${esc(label + " — " + person.name)}" aria-busy="${person.pending}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}')">${esc(label)}</button>${person.error ? `<button type="button" data-friend-user-id="${person.id}" data-friend-control="refresh" ${person.pending || state.accountChanged ? "disabled" : ""} onclick="refreshFriend('${person.id}')">Refresh status</button>` : ""}</div></article>`;
+  const photo = person.isPrivate === false && /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(person.photoUrl || "") ? person.photoUrl : null;
+  const avatar = photo ? `<img class="friend-photo" src="${esc(photo)}" alt="" loading="lazy">`
+    : `<span class="avatar" aria-hidden="true">${person.isPrivate ? icon("user") : esc(initials)}</span>`;
+  return `<article class="card friend" data-person-id="${person.id}">${avatar}<div class="info" style="min-width:0;overflow-wrap:anywhere"><h3 tabindex="-1" data-friend-heading="${person.id}">${esc(person.name)}</h3>${person.username && !person.isPrivate ? `<p class="muted">@${esc(person.username)}</p>` : ""}<p class="muted" data-friend-status="${person.relationship}" role="status">${descriptions[person.relationship]}</p>${person.error ? `<p class="error" role="alert">${esc(person.error)}</p>` : ""}</div><div class="friend-controls row"><button type="button" data-friend-user-id="${person.id}" data-friend-control="action" aria-label="${esc(label + " — " + person.name)}" aria-busy="${person.pending}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}')">${esc(label)}</button>${person.error ? `<button type="button" data-friend-user-id="${person.id}" data-friend-control="refresh" ${person.pending || state.accountChanged ? "disabled" : ""} onclick="refreshFriend('${person.id}')">Refresh status</button>` : ""}</div></article>`;
 }
 function friendsPage() {
   const heading = '<div class="eyebrow">Better with company</div><h1>Your people.</h1><p class="muted">Connect with people on Gather.</p>';
@@ -564,14 +567,21 @@ function friendsPage() {
   const state = friendActions.view();
   const notice = state.error ? `<div class="notice" role="alert">${esc(state.error)} <button onclick="${state.accountChanged ? "location.reload()" : "refreshPeople()"}">${state.accountChanged ? "Reload page" : "Retry"}</button></div>` : "";
   const content = state.people.length ? `<div class="grid">${state.people.map(person => friendCard(person, state)).join("")}</div>`
-    : state.ready ? '<div class="empty">No other people are available yet.</div>' : '';
-  return heading + `<div class="row"><button type="button" id="friendsRefresh" onclick="refreshPeople()" ${state.loading || friendActions.hasPending() || state.accountChanged ? "disabled" : ""}>Refresh people</button></div>` + notice
+    : state.ready ? '<div class="empty">No people found.</div>' : '';
+  return heading + `<form class="row" onsubmit="searchFriends(event)">
+    <label>Search people<input type="search" name="query" maxlength="60" value="${esc(state.search || "")}" placeholder="Username or public name"></label>
+    <button type="submit" id="friendsSearchButton" ${state.loading || friendActions.hasPending() || state.accountChanged ? "disabled" : ""}>Search</button>
+  </form><div class="row"><button type="button" id="friendsRefresh" onclick="refreshPeople()" ${state.loading || friendActions.hasPending() || state.accountChanged ? "disabled" : ""}>Refresh people</button></div>` + notice
     + (state.loading || (!state.ready && !state.error) ? '<p role="status">Loading people…</p>' : '') + content
     + (state.hasMore ? `<button type="button" id="friendsMore" onclick="loadMorePeople()" ${state.loading || !state.ready || friendActions.hasPending() ? "disabled" : ""}>Load more people</button>` : '')
     + `<div class="prefs"><h2>Event interests</h2><div class="chips">${categories.map(c => `<button class="${data.interests.includes(c) ? "active" : ""}" aria-pressed="${data.interests.includes(c)}" onclick="toggleInterest(${esc(JSON.stringify(c))})">${esc(c)}</button>`).join("")}</div></div>`;
 }
 function friendAction(id) { return friendActions.act(id); }
 function refreshFriend(id) { return friendActions.refreshPerson(id); }
+function searchFriends(event) {
+  event.preventDefault();
+  return friendActions.load(false, event.currentTarget.elements.query.value);
+}
 function refreshPeople() { return friendActions.load(); }
 function loadMorePeople() { return friendActions.load(true); }
 function toggleInterest(c) {

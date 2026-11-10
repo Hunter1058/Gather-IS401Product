@@ -1824,3 +1824,11 @@ footer {
   height: 100%;
   object-fit: cover;
 }
+
+.friend-photo {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 50%;
+  object-fit: cover;
+}

@@ -6,6 +6,7 @@
 window.GatherFriends = {
   create({ request, account, changed, notify, login, confirmRemove = () => true }) {
     let owner, generation = 0, people = [], nextCursor = null;
+    let search = "";
     let loading = false, ready = false, error = "", accountChanged = false;
     const pending = new Map(), problems = new Map();
     function sync() {
@@ -13,7 +14,7 @@ window.GatherFriends = {
       if (actual !== owner) {
         owner = actual; generation++; people = []; nextCursor = null;
         loading = ready = accountChanged = false; error = "";
-        pending.clear(); problems.clear();
+        pending.clear(); problems.clear(); search = "";
       }
       return owner;
     }
@@ -41,18 +42,22 @@ window.GatherFriends = {
       sync();
       return { people: people.map(person => ({ ...person, pending: pending.has(person.id),
         pendingAction: pending.get(person.id), error: problems.get(person.id) || "" })),
-        loading, ready, error, accountChanged, hasMore: nextCursor !== null };
+        loading, ready, error, accountChanged, search, hasMore: nextCursor !== null };
     }
-    async function load(more = false) {
+    async function load(more = false, query = search) {
       const id = sync(), token = generation;
       if (!id) { login(); return; }
       if (loading || pending.size || accountChanged) return;
       if (more && (!ready || !nextCursor)) return;
+      search = query.trim();
       const after = more ? nextCursor : null;
+      const params = new URLSearchParams();
+      if (after) params.set("after", after);
+      if (search) params.set("q", search);
       const trigger = document.activeElement;
       loading = true; ready = false; error = ""; changed();
       try {
-        const result = validated(await request("/friends/people" + (after ? "?after=" + encodeURIComponent(after) : ""),
+        const result = validated(await request("/friends/people" + (params.size ? "?" + params : ""),
           { headers: { "X-Gather-Account": id } }), id);
         if (!current(id, token)) return;
         if (!Array.isArray(result.people)) throw Error("Unable to load people. Please retry.");
@@ -68,7 +73,7 @@ window.GatherFriends = {
       } finally {
         if (current(id, token)) {
           loading = false; changed();
-          if (["friendsRefresh", "friendsMore"].includes(trigger?.id))
+          if (["friendsRefresh", "friendsMore", "friendsSearchButton"].includes(trigger?.id))
             (document.getElementById(trigger.id) || document.getElementById("friendsRefresh"))?.focus();
         }
       }

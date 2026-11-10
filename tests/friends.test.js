@@ -8,7 +8,7 @@ const source = await readFile(new URL('../public/friend-actions.js', import.meta
 async function fixture() {
   const db = friendDatabase(); let actor = A, release, hold = false, failWrite = false, failRead = false;
   const writes = [], messages = [];
-  const context = vm.createContext({ console, Map, Set, URL, encodeURIComponent,
+  const context = vm.createContext({ console, Map, Set, URL, URLSearchParams, encodeURIComponent,
     document: { activeElement: null, querySelectorAll() { return []; }, querySelector() {}, getElementById() {} } });
   context.window = context; vm.runInContext(source, context);
   const { sendRequest, cancelRequest, removeFriend } = await import('../lib/friends.js');
@@ -121,7 +121,7 @@ test('account switches discard in-flight responses and clear prior people and st
 
 test('a committed send with a failed status read is recovered without creating another attempt', async () => {
   const f = await fixture(); await f.controller.load();
-  f.db.errors.set('get_friend_people', 'XX000');
+  f.db.errors.set('search_friend_people', 'XX000');
   await f.controller.act(B);
   assert.equal(f.db.attempts.length, 1); assert.equal(f.db.attempts[0].Status, 'pending');
   assert.equal(f.controller.view().people[0].relationship, 'none');
@@ -142,7 +142,7 @@ test('people pagination appends distinct profiles without replacing earlier stat
 });
 
 test('an account mismatch in a response disables further actions until the page reloads', async () => {
-  const context = vm.createContext({ console, Map, Set, encodeURIComponent, document: { activeElement: null } }); context.window = context;
+  const context = vm.createContext({ console, Map, Set, URLSearchParams, encodeURIComponent, document: { activeElement: null } }); context.window = context;
   vm.runInContext(source, context); let calls = 0;
   const controller = context.GatherFriends.create({ account: () => A, changed() {}, notify() {}, login() {},
     async request() { calls++; return { accountId: B, people: [], nextCursor: null }; },
@@ -155,4 +155,16 @@ test('directory contract errors fail closed instead of rounding numeric request 
   const client = { async rpc() { return { data: [{ user_id: B, display_name: 'Blair', username: null,
     relationship: 'outgoing_pending', request_id: 9007199254740993 }], error: null }; } };
   await assert.rejects(people(client, new URLSearchParams()), { status: 503 });
+});
+
+test('private search results expose only the username and no photo', async () => {
+  const client = { rpc: async (name, args) => {
+    assert.equal(name, 'search_friend_people');
+    assert.equal(args.p_query, 'blair');
+    return { data: [{ user_id: B, username: 'blair', display_name: 'Full Name',
+      is_private: true, photo_url: 'https://example.com/photo.jpg', relationship: 'friends' }] };
+  } };
+  const result = await people(client, new URLSearchParams({ q: '@blair' }));
+  assert.equal(result.people[0].name, '@blair');
+  assert.equal(result.people[0].photoUrl, null);
 });
