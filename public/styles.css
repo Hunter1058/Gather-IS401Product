@@ -1747,3 +1747,11 @@ footer {
   height: 100%;
   object-fit: contain;
 }
+
+.hero-flyer {
+  display: block;
+  width: min(100%, 280px);
+  height: 180px;
+  object-fit: contain;
+  object-position: left center;
+}
