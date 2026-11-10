@@ -671,14 +671,33 @@ function categoryIcon(e) {
   );
 }
 function poster(e, cls = "") {
-  return `<div class="poster ${categoryClass(e)} ${cls}" role="img" aria-label="Sample flyer for ${esc(e.name)}"><span class="shape">${icon(categoryIcon(e))}</span><small>${esc(e.club || "Not Specified")} · ${pretty(e.date)}</small><strong>${esc(e.poster.replaceAll(" / ", " · "))}</strong></div>`;
+  const classes = `poster ${categoryClass(e)} ${cls}`;
+  const imageUrl = e.imageUrl?.trim();
+
+  if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
+    return `
+      <div class="${classes} event-photo-poster">
+        <img src="${esc(imageUrl)}" alt="" loading="lazy">
+      </div>`;
+  }
+
+  return `
+    <div class="${classes}" role="img" aria-label="Sample flyer for ${esc(e.name)}">
+      <span class="shape">${icon(categoryIcon(e))}</span>
+      <small>${esc(e.club || "Not Specified")} · ${pretty(e.date)}</small>
+      <strong>${esc((e.poster || "Campus event").replaceAll(" / ", " · "))}</strong>
+    </div>`;
 }
 function hero() {
   let upcoming = events.filter((e) => !ended(e)).slice(0, 3);
   let e = upcoming[slide % upcoming.length];
   if (!e)
     return '<div class="empty"><h2>A little more campus in your life.</h2><p>New events will appear here when they’re available.</p></div>';
-  return `<div class="hero"><div class="hero-copy"><span class="eyebrow">${icon("sparkles")} Make room for a good time</span><h1>Your next favorite<br>campus memory.</h1><p class="muted">Find something you love.<br>Bring someone along.</p><button class="primary" style="margin-top:16px" onclick="go('list')">Explore events ${icon("arrow-up-right")}</button></div><div class="hero-art ${categoryClass(e)}" tabindex="0" aria-label="View details for ${esc(e.name)}" onclick="activateEventCard(event, '${e.id}')" onkeydown="activateEventCard(event, '${e.id}')"><span class="bigmark">${icon(categoryIcon(e))}</span><small>FEATURED ON CAMPUS</small><b>${esc(e.name)}</b><p>${pretty(e.date)} · ${time(e.start)}<br>${eventLocationLink(e)}</p><div class="hero-event-actions">${goingButton(e)}${shareButton(e)}</div><div class="row hero-navigation"><div class="hero-controls"><button aria-label="Previous flyer" onclick="moveSlide(-1)">${icon("chevron-left")}</button><span class="count">${(slide % upcoming.length) + 1} / ${upcoming.length}</span><button aria-label="Next flyer" onclick="moveSlide(1)">${icon("chevron-right")}</button><button aria-label="${paused ? "Play" : "Pause"} slideshow" onclick="paused=!paused;renderHero()">${icon(paused ? "play" : "pause")}</button></div></div></div></div>`;
+  const imageUrl = e.imageUrl?.trim();
+  const featuredArt = imageUrl && /^https?:\/\//i.test(imageUrl)
+  ? `<img class="hero-flyer" src="${esc(imageUrl)}" alt="">`
+  : `<span class="bigmark">${icon(categoryIcon(e))}</span>`;
+  return `<div class="hero"><div class="hero-copy"><span class="eyebrow">${icon("sparkles")} Make room for a good time</span><h1>Your next favorite<br>campus memory.</h1><p class="muted">Find something you love.<br>Bring someone along.</p><button class="primary" style="margin-top:16px" onclick="go('list')">Explore events ${icon("arrow-up-right")}</button></div><div class="hero-art ${categoryClass(e)}" tabindex="0" aria-label="View details for ${esc(e.name)}" onclick="activateEventCard(event, '${e.id}')" onkeydown="activateEventCard(event, '${e.id}')">${featuredArt}<small>FEATURED ON CAMPUS</small><b>${esc(e.name)}</b><p>${pretty(e.date)} · ${time(e.start)}<br>${eventLocationLink(e)}</p><div class="hero-event-actions">${goingButton(e)}${shareButton(e)}</div><div class="row hero-navigation"><div class="hero-controls"><button aria-label="Previous flyer" onclick="moveSlide(-1)">${icon("chevron-left")}</button><span class="count">${(slide % upcoming.length) + 1} / ${upcoming.length}</span><button aria-label="Next flyer" onclick="moveSlide(1)">${icon("chevron-right")}</button><button aria-label="${paused ? "Play" : "Pause"} slideshow" onclick="paused=!paused;renderHero()">${icon(paused ? "play" : "pause")}</button></div></div></div></div>`;
 }
 function home() {
   let upcoming = events.filter((e) => !ended(e)),
