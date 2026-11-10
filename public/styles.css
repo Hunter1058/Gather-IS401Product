@@ -1755,3 +1755,40 @@ footer {
   object-fit: contain;
   object-position: left center;
 }
+.account-menu {
+  position: relative;
+}
+
+#accountMenu {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 100%;
+  min-width: 165px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+#accountMenu > :is(a, button) {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+}
+
+#accountMenu > :is(a, button):is(:hover, :focus-visible) {
+  background: var(--hover);
+}
+.header-user.profile-avatar:hover,
+.header-user.profile-avatar:focus-visible {
+  background: #1d4ed8;
+  color: white;
+}

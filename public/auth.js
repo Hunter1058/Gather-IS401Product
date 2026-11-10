@@ -184,7 +184,11 @@ async function boot() {
       if (backendMode === "supabase") data = { accounts: [], user: (await api("/auth/session")).user };
     }
     $("app").innerHTML = auth(signup);
-    $("userButton").textContent = data.user ? data.user.name + " ↗" : "Sign in";
+    if (data.user && /^\/settings\/?$/.test(location.pathname)) {
+      document.title = "Profile settings | Gather";
+      $("app").querySelector(".eyebrow").textContent = "Profile settings";
+    }
+    globalThis.accountMenu?.update(data.user, signOut);
     $("sideUserButton").textContent = data.user ? "Account" : "Sign in";
     $("footerMode").textContent = backendMode === "demo" ? "Demo mode · Plans saved in this browser" : "Connected to Supabase";
     window.lucide?.createIcons();
