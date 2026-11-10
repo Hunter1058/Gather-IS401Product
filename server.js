@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { authSessions } from "./lib/auth-session.js";
 import { isSameOrigin } from "./lib/request-origin.js";
+import { people, userId, friendBody, sendRequest, cancelRequest, removeFriend } from "./lib/friends.js";
 import { planInput, profileId, readPlans, writePlan } from "./lib/event-plans.js";
 
 // Server and Supabase configuration. Supabase credentials must be provided together.
@@ -101,8 +102,7 @@ export const server = http.createServer(async (req, res) => {
       if (route === "/events" && req.method === "GET") {
         const { data, error } = await publicClient
           .from("Events")
-          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, CampusLocation, categoryLinks:Event_Category_Linking_Table(category:EventCategory(EventCatagory))")
-          .order("EventDate", { ascending: true })
+          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, EventImage, CampusLocation, categoryLinks:Event_Category_Linking_Table(category:EventCategory(EventCatagory))")          .order("EventDate", { ascending: true })
           .limit(500);
         
         if (error) throw error;
@@ -136,6 +136,7 @@ export const server = http.createServer(async (req, res) => {
               date: r.EventDate,
               start: r.EventTime,
               description: r.EventDescription,
+              imageUrl: r.EventImage || null, 
               end: null,
               club: null,
               major: null,
@@ -191,6 +192,78 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 200, { user: userView(session?.user) });
       }
 
+      if (route === "/settings" && ["GET", "PUT"].includes(req.method)) {
+        const session = await sessionCookies.restore(req, res);
+        if (!session) return json(res, 401, { error: "Sign in to manage your settings." });
+        const accountId = session.user.id;
+        if (req.headers["x-gather-account"] !== accountId)
+          return json(res, 409, { error: "Your account changed. Reload before continuing." });
+
+        if (req.method === "PUT") {
+          const { firstName, lastName, categoryIds, photoUrl } = (await body(req)) ?? {};
+          if (typeof firstName !== "string" || !firstName.trim() || firstName.trim().length > 60 ||
+              typeof lastName !== "string" || lastName.trim().length > 60 ||
+              !Array.isArray(categoryIds) || categoryIds.length > 100 ||
+              categoryIds.some(id => typeof id !== "string" || !/^[1-9][0-9]{0,18}$/.test(id) ||
+                BigInt(id) > 9223372036854775807n))
+            return json(res, 400, { error: "Enter a first name and choose valid categories." });
+          if (photoUrl !== undefined && (typeof photoUrl !== "string" || photoUrl.length > 55000 ||
+              !/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]+={0,2}$/.test(photoUrl)))
+            return json(res, 400, { error: "Choose a valid profile photo." });
+          const { error } = await session.client.rpc(
+            photoUrl === undefined ? "save_profile_settings" : "save_profile_settings_with_photo", {
+            first_name: firstName.trim(), last_name: lastName.trim(), category_ids: categoryIds,
+            ...(photoUrl === undefined ? {} : { photo_url: photoUrl }),
+          });
+          if (error?.code === "23503")
+            return json(res, 400, { error: "A category is no longer available. Reload and try again." });
+          if (error) throw error;
+          return json(res, 200, { firstName: firstName.trim(), lastName: lastName.trim() });
+        }
+
+        const [profile, categories, interests] = await Promise.all([
+          session.client.from("User").select("UserFirstName, UserLastName, Username, UserProfilePhoto").eq("UserID", accountId).single(),
+          session.client.from("EventCategory").select("id:EventCatID::text, EventCatagory").order("EventCatagory"),
+          session.client.from("UserInterest").select("id:EventCatID::text").eq("UserID", accountId),
+        ]);
+        for (const result of [profile, categories, interests]) if (result.error) throw result.error;
+        return json(res, 200, {
+          firstName: profile.data.UserFirstName ?? "",
+          lastName: profile.data.UserLastName ?? "",
+          username: profile.data.Username,
+          photoUrl: profile.data.UserProfilePhoto,
+          categories: categories.data,
+          categoryIds: interests.data.map(({ id }) => id),
+        });
+      }
+
+      // Friend actions use the verified per-request account client. The header
+      // protects against acting from a tab showing a different signed-in user.
+      if (route.startsWith("/friends/")) {
+        const session = await sessionCookies.restore(req, res);
+        if (!session) return json(res, 401, { error: "Sign in to manage friendships." });
+        const expected = req.headers["x-gather-account"];
+        if ((expected && expected !== session.user.id) || (req.method !== "GET" && expected !== session.user.id))
+          return json(res, 409, { error: "Your account changed. Reload the page before changing friendships.", code: "ACCOUNT_CHANGED" });
+        if (route === "/friends/people" && req.method === "GET")
+          return json(res, 200, { accountId: session.user.id, ...await people(session.client, url.searchParams) });
+        if (route === "/friends/requests" && req.method === "POST") {
+          const recipient = friendBody(await body(req), true);
+          return json(res, 200, { accountId: session.user.id, person: await sendRequest(session.client, session.user.id, recipient) });
+        }
+        const cancellation = /^\/friends\/requests\/([^/]+)$/.exec(route);
+        if (cancellation && req.method === "DELETE") {
+          friendBody(await body(req));
+          return json(res, 200, { accountId: session.user.id, person: await cancelRequest(session.client, session.user.id, cancellation[1]) });
+        }
+        const removal = /^\/friends\/([^/]+)$/.exec(route);
+        if (removal && req.method === "DELETE") {
+          friendBody(await body(req));
+          return json(res, 200, { accountId: session.user.id, person: await removeFriend(session.client, session.user.id, userId(removal[1])) });
+        }
+        return json(res, 405, { error: "Unsupported friendship operation." });
+      }
+
       // Read-only aggregate for the existing Saved/home pages.
       if (route === "/state") {
         const session = await sessionCookies.restore(req, res);
@@ -226,8 +299,8 @@ export const server = http.createServer(async (req, res) => {
     // Non-API requests serve files from the public directory.
     // Dedicated page routes follow the same static HTML mapping.
     if (!["GET", "HEAD"].includes(req.method)) return json(res, 405, { error: "Method not allowed." });
-    const pageRoute = /^\/(events|login|signup)\/?$/.exec(url.pathname);
-    if (pageRoute) url.pathname = `/${pageRoute[1]}.html`;
+    const pageRoute = /^\/(events|login|signup|settings)\/?$/.exec(url.pathname);
+    if (pageRoute) url.pathname = `/${pageRoute[1] === "settings" ? "login" : pageRoute[1]}.html`;
     const path = resolve(root, "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
     if (!path.startsWith(root + "/")) return json(res, 403, { error: "Forbidden" });
 
@@ -241,7 +314,7 @@ export const server = http.createServer(async (req, res) => {
     }
   } catch (e) {
     console.error("Request failed:", e.code || e.name || "Error");
-    return json(res, e.status || 500, { error: e.status ? e.message : "The request could not be completed." });
+    return json(res, e.status || 500, { error: e.status ? e.message : "The request could not be completed.", ...(e.status && e.code ? { code: e.code } : {}) });
   }
 });
 

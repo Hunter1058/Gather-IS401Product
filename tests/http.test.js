@@ -56,6 +56,9 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   try {
+    // The event API also loads the full category catalog, including categories
+    // not linked to any listed event. This is fixture data, not a live DB call.
+    db.rows.EventCategory = ['Arts', 'Spiritual', 'Sports'].map(EventCatagory => ({ EventCatagory }));
     // Exercise the real event endpoint with both PostgREST relation shapes.
     db.rows.Events[0].categoryLinks = { category: { EventCatagory: 'Arts' } };
     db.rows.Events[1].categoryLinks = [
@@ -67,7 +70,10 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     db.rows.Events.push({ EventID: '3', categoryLinks: [] });
     const listing = await call('/events');
     assert.equal(listing.status, 200);
-    const listed = (await listing.json()).events;
+    const payload = await listing.json();
+    assert.deepEqual(payload.categories, ['Arts', 'Spiritual', 'Sports'],
+      'the complete category catalog includes categories with no listed event');
+    const listed = payload.events;
     assert.equal(listed.length, 3, 'joining categories must not duplicate events');
     assert.deepEqual(listed[0].categories, ['Arts']);
     assert.deepEqual(listed[1].categories, ['Arts', 'Spiritual']);
@@ -79,6 +85,10 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     db.errors.set('Events', { message: 'category listing denied' });
     assert.equal((await call('/events')).status, 500);
     db.errors.delete('Events');
+    db.errors.set('EventCategory', { message: 'category catalog denied' });
+    assert.equal((await call('/events')).status, 500,
+      'a category-catalog read failure must not look like a successful empty catalog');
+    db.errors.delete('EventCategory');
     assert.equal((await call('/state')).status, 401);
     assert.equal((await call('/events/1/bookmark', null, 'PUT', { bookmarked: true })).status, 401);
     const a = await login('a@example.test');

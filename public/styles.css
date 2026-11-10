@@ -1734,3 +1734,93 @@ footer {
 .filters .category-dropdown .category-options label {
   color: #172033;
 }
+
+
+.event-photo-poster {
+  position: relative;
+}
+
+.event-photo-poster > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.hero-flyer {
+  display: block;
+  width: min(100%, 280px);
+  height: 180px;
+  object-fit: contain;
+  object-position: left center;
+}
+.account-menu {
+  position: relative;
+}
+
+#accountMenu {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 100%;
+  min-width: 165px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+#accountMenu > :is(a, button) {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+}
+
+#accountMenu > :is(a, button):is(:hover, :focus-visible) {
+  background: var(--hover);
+}
+.header-user.profile-avatar:hover,
+.header-user.profile-avatar:focus-visible {
+  background: #1d4ed8;
+  color: white;
+}
+.settings-interests {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr));
+  gap: 8px;
+}
+
+.settings-interests label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-interests input {
+  width: auto;
+  margin: 0;
+}
+
+.avatar.settings-photo {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  overflow: hidden;
+  font-size: 24px;
+}
+
+.settings-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

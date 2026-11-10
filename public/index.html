@@ -16,6 +16,8 @@
     <script defer src="vendor/lucide.min.js"></script>
     <script defer src="event-plans.js"></script>
     <script defer src="event-sharing.js"></script>
+    <script defer src="/account-menu.js"></script>
+    <script defer src="friend-actions.js"></script>
     <script defer src="app.js"></script>
   </head>
   <body>
@@ -36,9 +38,7 @@
         </div>
       </div>
       <nav id="topnav" aria-label="Main navigation"></nav>
-      <button class="header-user" id="userButton" onclick="go('login')">
-        Sign in
-      </button>
+      <button class="header-user" id="userButton" type="button">Sign in</button>
     </header>
     <aside id="drawer" class="drawer" hidden aria-label="Navigation">
       <button onclick="toggleMenu()">Close menu</button>
