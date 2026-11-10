@@ -610,6 +610,11 @@ function renderBase() {
     .join("");
 
     const userButton = $("userButton");
+      globalThis.accountMenu?.update(data.user, async () => {
+        if (backendMode === "supabase") await api("/auth/logout", { method: "POST", body: "{}" });
+        else { data.user = null; persistDemo(); }
+        location.assign("/");
+      });
 
     if (data.user) {
       const initials = (data.user.name || data.user.email || "U")

@@ -13,6 +13,7 @@
     <script defer src="/vendor/lucide.min.js"></script>
     <script defer src="/event-plans.js"></script>
     <script defer src="/event-sharing.js"></script>
+    <script defer src="/account-menu.js"></script>
     <script defer src="/events.js"></script>
   </head>
   <body>
@@ -31,7 +32,7 @@
         <a href="/events?view=calendar">Calendar</a>
         <a href="/#friends">Friends</a>
       </nav>
-      <a class="header-user" id="userButton" href="/login" style="text-decoration:none">Sign in</a>
+      <button class="header-user" id="userButton" type="button">Sign in</button>
     </header>
     <button type="button" id="toolbarReopenButton" class="toolbar-reopen" hidden aria-label="Show search &amp; filters" aria-controls="toolbar" aria-expanded="false" title="Show search &amp; filters" onclick="toggleToolbar()"><i data-lucide="chevron-down" aria-hidden="true"></i></button>
     <aside id="drawer" class="drawer" hidden aria-label="Navigation">
