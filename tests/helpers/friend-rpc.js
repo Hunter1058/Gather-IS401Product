@@ -4,7 +4,7 @@ export const A = '11111111-1111-4111-8111-111111111111';
 export const B = '22222222-2222-4222-8222-222222222222';
 export const C = '33333333-3333-4333-8333-333333333333';
 export function friendDatabase() {
-  const users = [A, B, C].map((id, i) => ({ user_id: id, display_name: ['Alex', 'Blair <friend>', 'Casey'][i], username: null }));
+  const users = [A, B, C].map((id, i) => ({ user_id: id, display_name: ['Alex', 'Blair <friend>', 'Casey'][i], username: null, is_private: false }));
   const attempts = [], friendships = new Set(), calls = [], errors = new Map();
   let next = 9007199254740993n;
   const pair = (a, b) => [a, b].sort().join(':');
@@ -20,7 +20,7 @@ export function friendDatabase() {
     calls.push({ actor, name, args: structuredClone(args) });
     if (errors.has(name)) return failure(errors.get(name));
     if (!actor) return failure('42501');
-    if (name === 'get_friend_people') return success(users.filter(user => user.user_id !== actor &&
+    if (name === 'search_friend_people') return success(users.filter(user => user.user_id !== actor &&
       (!args.p_after || user.user_id > args.p_after) && (!args.p_person_id || user.user_id === args.p_person_id))
       .slice(0, args.p_limit).map(user => ({ ...user, ...status(actor, user.user_id) })));
     if (name === 'send_friend_request') {

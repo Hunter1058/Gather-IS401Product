@@ -200,8 +200,8 @@ export const server = http.createServer(async (req, res) => {
           return json(res, 409, { error: "Your account changed. Reload before continuing." });
 
         if (req.method === "PUT") {
-          const { firstName, lastName, categoryIds, photoUrl } = (await body(req)) ?? {};
-          if (typeof firstName !== "string" || !firstName.trim() || firstName.trim().length > 60 ||
+          const { firstName, lastName, categoryIds, photoUrl, isPrivate, username } = (await body(req)) ?? {};
+          if (typeof isPrivate !== "boolean" || typeof firstName !== "string" || !firstName.trim() || firstName.trim().length > 60 ||
               typeof lastName !== "string" || lastName.trim().length > 60 ||
               !Array.isArray(categoryIds) || categoryIds.length > 100 ||
               categoryIds.some(id => typeof id !== "string" || !/^[1-9][0-9]{0,18}$/.test(id) ||
@@ -210,19 +210,24 @@ export const server = http.createServer(async (req, res) => {
           if (photoUrl !== undefined && (typeof photoUrl !== "string" || photoUrl.length > 55000 ||
               !/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]+={0,2}$/.test(photoUrl)))
             return json(res, 400, { error: "Choose a valid profile photo." });
+          const handle = typeof username === "string" ? username.trim().replace(/^@/, "").toLowerCase() : null;
+          if (handle === null || (handle && !/^[a-z0-9_]{3,30}$/.test(handle)))
+            return json(res, 400, { error: "Use 3–30 letters, numbers, or underscores for your username." });
           const { error } = await session.client.rpc(
-            photoUrl === undefined ? "save_profile_settings" : "save_profile_settings_with_photo", {
+            "save_profile_username_settings", {
             first_name: firstName.trim(), last_name: lastName.trim(), category_ids: categoryIds,
-            ...(photoUrl === undefined ? {} : { photo_url: photoUrl }),
+            photo_url: photoUrl ?? null, is_private: isPrivate, username: handle || null,
           });
+          if (error?.code === "23505")
+            return json(res, 409, { error: "That username is already taken." });
           if (error?.code === "23503")
             return json(res, 400, { error: "A category is no longer available. Reload and try again." });
           if (error) throw error;
-          return json(res, 200, { firstName: firstName.trim(), lastName: lastName.trim() });
+          return json(res, 200, { firstName: firstName.trim(), lastName: lastName.trim(), isPrivate, username: handle || null });
         }
 
         const [profile, categories, interests] = await Promise.all([
-          session.client.from("User").select("UserFirstName, UserLastName, Username, UserProfilePhoto").eq("UserID", accountId).single(),
+          session.client.from("User").select("UserFirstName, UserLastName, Username, UserProfilePhoto, IsPrivate").eq("UserID", accountId).single(),
           session.client.from("EventCategory").select("id:EventCatID::text, EventCatagory").order("EventCatagory"),
           session.client.from("UserInterest").select("id:EventCatID::text").eq("UserID", accountId),
         ]);
@@ -231,6 +236,7 @@ export const server = http.createServer(async (req, res) => {
           firstName: profile.data.UserFirstName ?? "",
           lastName: profile.data.UserLastName ?? "",
           username: profile.data.Username,
+          isPrivate: profile.data.IsPrivate,
           photoUrl: profile.data.UserProfilePhoto,
           categories: categories.data,
           categoryIds: interests.data.map(({ id }) => id),

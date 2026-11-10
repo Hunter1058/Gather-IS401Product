@@ -229,8 +229,9 @@ async function loadSettings() {
           ${photo && /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(photo) ? `<img src="${esc(photo)}" alt="">` : ""}
         </div>
         <h2>${esc(name)}</h2>
-        <p>Username: ${profile.username ? esc(profile.username) : "Not set"}</p>
+        <p>Username: ${profile.username ? "@" + esc(profile.username.replace(/^@/, "")) : "Not set"}</p>
         <p class="muted">${esc(data.user.email || "")}</p>
+        <p>Profile visibility: ${profile.isPrivate ? "Private" : "Public"}</p>
         <h3>Event interests</h3>
         <p>${interests.length ? interests.map(category => esc(category.EventCatagory || "Unnamed category")).join(", ") : "No interests selected."}</p>
         <p id="settingsSaved" role="status" tabindex="-1">${esc(message)}</p>
@@ -255,8 +256,17 @@ async function loadSettings() {
         <p class="muted">${esc(data.user.email || "")}</p>
         <label>First name<input name="firstName" autocomplete="given-name" maxlength="60" required value="${esc(profile.firstName)}"></label>
         <label>Last name<input name="lastName" autocomplete="family-name" maxlength="60" value="${esc(profile.lastName)}"></label>
+        <label>Username<input name="username" autocomplete="username" maxlength="31" aria-describedby="usernameHint" value="${esc(profile.username || "")}"></label>
+        <p class="muted" id="usernameHint">Use 3–30 letters, numbers, or underscores so people can find you in Friends.</p>
         <label>Profile photo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="photoHint"></label>
         <p class="muted" id="photoHint">JPG, PNG, or WebP, up to 5 MB. Leave blank to keep your current photo.</p>
+        <label>Profile visibility
+          <select name="visibility" aria-describedby="visibilityHint">
+            <option value="private" ${profile.isPrivate ? "selected" : ""}>Private</option>
+            <option value="public" ${profile.isPrivate ? "" : "selected"}>Public</option>
+          </select>
+        </label>
+        <p id="visibilityHint" class="muted">People can find you by username either way. Only Public shows your name and photo to other signed-in users.</p>
         <fieldset><legend>Event interests</legend>
           <p class="muted">Choose any categories you’re interested in.</p>
           <div class="settings-interests">${profile.categories.map(category =>
@@ -291,6 +301,8 @@ async function loadSettings() {
               lastName: fields.get("lastName"),
               categoryIds: fields.getAll("categoryId"),
               photoUrl,
+              username: fields.get("username"),
+              isPrivate: fields.get("visibility") === "private",
             }),
           });
           profile = { ...profile, ...saved, photoUrl: photoUrl ?? profile.photoUrl, categoryIds: fields.getAll("categoryId") };

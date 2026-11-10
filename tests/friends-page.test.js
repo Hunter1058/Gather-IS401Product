@@ -13,7 +13,7 @@ async function fixture({ guest = false, eventsFail = false, stateFail = false, c
       classList: { add() {}, remove() {} }, setAttribute() {}, addEventListener() {}, focus() {} });
     return elements.get(id);
   };
-  const context = vm.createContext({ console: { ...console, error: (...args) => logs.push(args) }, URL, Date, Map, Set, encodeURIComponent,
+  const context = vm.createContext({ console: { ...console, error: (...args) => logs.push(args) }, URL, URLSearchParams, Date, Map, Set, encodeURIComponent,
     localStorage: { getItem() { return JSON.stringify({ friends: ['Fictional old friend'] }); } },
     location: { protocol: 'http:', hash: '#friends', assign(path) { this.redirect = path; } },
     history: { replaceState() {} },
