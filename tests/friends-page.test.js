@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-import { people, sendRequest, cancelRequest, removeFriend } from '../lib/friends.js';
+import { people, sendRequest, cancelRequest, removeFriend, respondRequest } from '../lib/friends.js';
 import { friendDatabase, A, B } from './helpers/friend-rpc.js';
 
 async function fixture({ guest = false, eventsFail = false, stateFail = false, confirm = true } = {}) {
@@ -37,7 +37,8 @@ async function fixture({ guest = false, eventsFail = false, stateFail = false, c
         if (url.pathname === '/api/friends/people') body = { accountId: A, ...await people(client, url.searchParams) };
         else {
           const input = JSON.parse(options.body);
-          const person = options.method === 'POST' ? await sendRequest(client, A, input.recipientId)
+          const response = /\/requests\/([^/]+)\/(accept|deny)$/.exec(path);
+          const person = response ? await respondRequest(client, A, response[1], response[2] === 'accept') : options.method === 'POST' ? await sendRequest(client, A, input.recipientId)
             : path.includes('/requests/') ? await cancelRequest(client, A, path.split('/').at(-1))
             : await removeFriend(client, A, path.split('/').at(-1));
           body = { accountId: A, person };
@@ -55,31 +56,41 @@ async function fixture({ guest = false, eventsFail = false, stateFail = false, c
   return { db, context, logs, html: () => el('app').innerHTML, run: code => vm.runInContext(code, context) };
 }
 
-test('real friends page loads real profiles and send/cancel restore after reloading state', async () => {
-  const f = await fixture(); assert.match(f.html(), /Blair &lt;friend&gt;/); assert.match(f.html(), /Send request/);
-  assert.doesNotMatch(f.html(), /Fictional old friend|Emma|Adding a friend here does not send/);
-  await f.run(`friendAction('${B}')`); assert.match(f.html(), /Cancel request/);
+test('tabs separate friends, suggested people, and sent requests across reloads', async () => {
+  const f = await fixture();
+  assert.match(f.html(), /My Friends/); assert.doesNotMatch(f.html(), /Blair &lt;friend&gt;/);
+  f.db.rsvps.set(A, new Set(['event-1'])); f.db.rsvps.set(B, new Set(['event-1']));
+  await f.run("selectFriendsTab('search')");
+  assert.match(f.html(), /Blair &lt;friend&gt;/); assert.match(f.html(), /1 shared RSVP/);
+  assert.doesNotMatch(f.html(), /Fictional old friend/);
+  await f.run(`friendAction('${B}')`); assert.doesNotMatch(f.html(), /Blair &lt;friend&gt;/);
+  await f.run("selectFriendsTab('requests')"); assert.match(f.html(), /Cancel request/);
   await f.run('refreshPeople()'); assert.match(f.html(), /Cancel request/);
-  await f.run(`friendAction('${B}')`); assert.match(f.html(), /Send request/); assert.equal(f.db.attempts[0].Status, 'cancelled');
+  await f.run(`friendAction('${B}')`); assert.equal(f.db.attempts[0].Status, 'cancelled');
+  assert.doesNotMatch(f.html(), /Blair &lt;friend&gt;/);
 });
 
 test('friends function independently of event listing and event-plan outages', async () => {
   const f = await fixture({ eventsFail: true, stateFail: true });
-  assert.match(f.html(), /Blair &lt;friend&gt;/);
+  await f.run("selectFriendsTab('search')"); assert.match(f.html(), /Blair &lt;friend&gt;/);
   assert.equal(f.logs.length, 1);
   await f.run(`friendAction('${B}')`); assert.equal(f.db.attempts[0].Status, 'pending');
 });
 
-test('accepted friends require removal confirmation and incoming requests have no send/cancel action', async () => {
+test('incoming requests can be accepted or denied and accepted friends require removal confirmation', async () => {
   const f = await fixture({ confirm: false });
-  await f.db.rpc(B, 'send_friend_request', { p_recipient_user_id: A }); await f.run('refreshPeople()');
-  assert.match(f.html(), /Request received/); const id = f.db.attempts[0].FriendRequestID;
-  await f.db.rpc(A, 'respond_to_friend_request', { p_request_id: id, p_accept: true }); await f.run('refreshPeople()');
-  assert.match(f.html(), /Remove friend/);
+  await f.db.rpc(B, 'send_friend_request', { p_recipient_user_id: A });
+  await f.run("selectFriendsTab('requests')");
+  assert.match(f.html(), />Accept</); assert.match(f.html(), />Deny</);
+  await f.run(`friendAction('${B}', 'accept')`);
+  assert.equal(f.db.status(A, B).relationship, 'friends'); assert.doesNotMatch(f.html(), /Blair &lt;friend&gt;/);
+  await f.run("selectFriendsTab('friends')"); assert.match(f.html(), /Remove friend/);
   await f.run(`friendAction('${B}')`); assert.equal(f.db.status(A, B).relationship, 'friends');
   f.context.confirm = () => true;
   await f.run(`friendAction('${B}')`); assert.equal(f.db.status(A, B).relationship, 'none');
-  assert.equal(f.db.attempts[0].Status, 'accepted');
+  await f.db.rpc(B, 'send_friend_request', { p_recipient_user_id: A });
+  await f.run("selectFriendsTab('requests')"); await f.run(`friendAction('${B}', 'deny')`);
+  assert.equal(f.db.attempts.at(-1).Status, 'declined');
 });
 
 test('guest friends page offers sign-in without exposing profiles or making directory requests', async () => {

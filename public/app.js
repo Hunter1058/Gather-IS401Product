@@ -136,7 +136,7 @@ function go(p) {
   if (location.protocol !== "file:")
     history.replaceState(null, "", p === "friends" ? "/#friends" : p === "saved" ? "/#saved" : "/");
   render();
-  if (p === "friends" && backendMode === "supabase" && data.user && !booting) void friendActions.load();
+  if (p === "friends" && backendMode === "supabase" && data.user && !booting) void refreshPeople();
   window.scrollTo(0, 0);
 }
 function setMode(m) {
@@ -554,43 +554,66 @@ function saveSurvey(ev, id) {
   toast("Your reflection has been saved");
 }
 
-// Stable friend data/control attributes are the handoff to the UI coworker.
+let friendsTab = "friends", friendsSearch = "";
 function friendCard(person, state) {
-  const labels = { none: "Send request", outgoing_pending: "Cancel request", friends: "Remove friend", incoming_pending: "Request received" };
-  const descriptions = { none: "", outgoing_pending: "Request sent", friends: "Friends", incoming_pending: "This person has sent you a request." };
-  const disabled = state.loading || !state.ready || state.accountChanged || person.pending || Boolean(person.error) || person.relationship === "incoming_pending";
-  const label = person.pending ? ({ send: "Sending…", cancel: "Cancelling…", remove: "Removing…", refresh: "Refreshing…" })[person.pendingAction] : labels[person.relationship];
+  const labels = { none: "Add friend", outgoing_pending: "Cancel request", friends: "Remove friend", incoming_pending: "Accept" };
+  const descriptions = { none: "", outgoing_pending: "Request sent · Waiting for a response", friends: "Connected on Gather", incoming_pending: "Wants to be your friend" };
+  const disabled = state.loading || !state.ready || state.accountChanged || person.pending || Boolean(person.error);
+  const label = person.pending ? ({ send: "Sending…", cancel: "Cancelling…", remove: "Removing…", refresh: "Refreshing…", accept: "Accepting…", deny: "Denying…" })[person.pendingAction] : labels[person.relationship];
   const initials = person.name.trim().split(/\s+/).map(part => Array.from(part)[0]).slice(0, 2).join("").toUpperCase() || "M";
   const photo = person.isPrivate === false && /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(person.photoUrl || "") ? person.photoUrl : null;
   const avatar = photo ? `<img class="friend-photo" src="${esc(photo)}" alt="" loading="lazy">`
     : `<span class="avatar" aria-hidden="true">${person.isPrivate ? icon("user") : esc(initials)}</span>`;
-  return `<article class="card friend" data-person-id="${person.id}">${avatar}<div class="info" style="min-width:0;overflow-wrap:anywhere"><h3 tabindex="-1" data-friend-heading="${person.id}">${esc(person.name)}</h3>${person.username && !person.isPrivate ? `<p class="muted">@${esc(person.username)}</p>` : ""}<p class="muted" data-friend-status="${person.relationship}" role="status">${descriptions[person.relationship]}</p>${person.error ? `<p class="error" role="alert">${esc(person.error)}</p>` : ""}</div><div class="friend-controls row"><button type="button" data-friend-user-id="${person.id}" data-friend-control="action" aria-label="${esc(label + " — " + person.name)}" aria-busy="${person.pending}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}')">${esc(label)}</button>${person.error ? `<button type="button" data-friend-user-id="${person.id}" data-friend-control="refresh" ${person.pending || state.accountChanged ? "disabled" : ""} onclick="refreshFriend('${person.id}')">Refresh status</button>` : ""}</div></article>`;
+  const reasons = [person.sharedEvents > 0 ? `${person.sharedEvents} shared RSVP${person.sharedEvents === 1 ? "" : "s"}` : "", person.mutualFriends > 0 ? `${person.mutualFriends} mutual friend${person.mutualFriends === 1 ? "" : "s"}` : ""].filter(Boolean);
+  return `<article class="card friend" data-person-id="${person.id}">${avatar}<div class="info"><h3 tabindex="-1" data-friend-heading="${person.id}">${esc(person.name)}</h3>${person.username && !person.isPrivate ? `<p class="muted">@${esc(person.username)}</p>` : ""}<p class="muted" data-friend-status="${person.relationship}" role="status">${descriptions[person.relationship]}</p>${reasons.length ? `<p class="friend-reasons">${esc(reasons.join(" · "))}</p>` : ""}${person.error ? `<p class="error" role="alert">${esc(person.error)}</p>` : ""}</div><div class="friend-controls row"><button type="button" class="${["none", "incoming_pending"].includes(person.relationship) ? "primary" : ""}" data-friend-user-id="${person.id}" data-friend-control="action" aria-label="${esc(label + " — " + person.name)}" aria-busy="${person.pending}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}'${person.relationship === "incoming_pending" ? ", 'accept'" : ""})">${esc(label)}</button>${person.relationship === "incoming_pending" ? `<button type="button" data-friend-user-id="${person.id}" aria-label="Deny — ${esc(person.name)}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}', 'deny')">Deny</button>` : ""}${person.error ? `<button type="button" data-friend-user-id="${person.id}" data-friend-control="refresh" ${person.pending || state.accountChanged ? "disabled" : ""} onclick="refreshFriend('${person.id}')">Refresh status</button>` : ""}</div></article>`;
 }
 function friendsPage() {
-  const heading = '<div class="eyebrow">Better with company</div><h1>Your people.</h1><p class="muted">Connect with people on Gather.</p>';
+  const heading = '<div class="eyebrow">Better with company</div><h1>Your people.</h1><p class="muted">Find familiar faces. Make new plans together.</p>';
   if (booting) return heading + '<p role="status">Loading your account…</p>';
   if (backendMode !== "supabase") return heading + '<p class="notice">Friend requests require a connected account.</p>';
   if (!data.user) return heading + '<div class="notice">Sign in to connect with people. <button onclick="go(\'login\')">Sign in</button></div>';
   const state = friendActions.view();
+  const tabs = `<div class="friends-tabs" role="tablist" aria-label="Friends">${[["friends", "My Friends"], ["search", "Search Friends"], ["requests", "Requests"]].map(([key, label]) => `<button type="button" role="tab" id="friends-tab-${key}" aria-controls="friends-panel" aria-selected="${friendsTab === key}" tabindex="${friendsTab === key ? "0" : "-1"}" ${friendActions.hasPending() || state.accountChanged ? "disabled" : ""} onclick="selectFriendsTab('${key}')" onkeydown="friendsTabKey(event, '${key}')">${label}</button>`).join("")}</div>`;
   const notice = state.error ? `<div class="notice" role="alert">${esc(state.error)} <button onclick="${state.accountChanged ? "location.reload()" : "refreshPeople()"}">${state.accountChanged ? "Reload page" : "Retry"}</button></div>` : "";
-  const content = state.people.length ? `<div class="grid">${state.people.map(person => friendCard(person, state)).join("")}</div>`
-    : state.ready ? '<div class="empty">No people found.</div>' : '';
-  return heading + `<form class="row" onsubmit="searchFriends(event)">
-    <label>Search people<input type="search" name="query" maxlength="60" value="${esc(state.search || "")}" placeholder="Username or public name"></label>
-    <button type="submit" id="friendsSearchButton" ${state.loading || friendActions.hasPending() || state.accountChanged ? "disabled" : ""}>Search</button>
-  </form><div class="row"><button type="button" id="friendsRefresh" onclick="refreshPeople()" ${state.loading || friendActions.hasPending() || state.accountChanged ? "disabled" : ""}>Refresh people</button></div>` + notice
+  const cards = people => `<div class="grid friends-grid">${people.map(person => friendCard(person, state)).join("")}</div>`;
+  let content = "";
+  if (friendsTab === "search") {
+    const suggested = state.people.filter(p => p.sharedEvents > 0 || p.mutualFriends > 0);
+    const others = state.people.filter(p => !(p.sharedEvents > 0 || p.mutualFriends > 0));
+    content = `<form class="friends-search" onsubmit="searchFriends(event)"><label for="friendsSearch">Find someone on Gather</label><div class="row"><input id="friendsSearch" name="search" type="search" maxlength="60" placeholder="Username or public name" value="${esc(friendsSearch)}"><button class="primary" type="submit" ${friendActions.hasPending() ? "disabled" : ""}>Search</button></div></form><h2>${friendsSearch ? "Search results" : "Suggested friends"}</h2><p class="muted">People who RSVP’d to the same events or know your friends appear first.</p>`;
+    if (suggested.length) content += cards(suggested);
+    if (others.length) content += `<h2>Explore people</h2>` + cards(others);
+  } else if (friendsTab === "requests") {
+    const incoming = state.people.filter(p => p.relationship === "incoming_pending"), outgoing = state.people.filter(p => p.relationship === "outgoing_pending");
+    content = `<h2>Friend requests</h2><p class="muted">A new connection starts here.</p>` + (incoming.length ? cards(incoming) : state.ready ? '<div class="empty">No incoming requests right now.</div>' : '')
+      + (outgoing.length ? '<h2>Sent requests</h2>' + cards(outgoing) : '');
+  } else content = '<h2>My Friends</h2><p class="muted">Your crew for whatever’s next.</p>' + cards(state.people);
+  if (state.ready && !state.people.length && friendsTab !== "requests") content += `<div class="empty">${friendsTab === "friends" ? 'Your friend list starts here. Visit Search Friends to find your people.' : friendsSearch ? 'No people match your search. Try another name.' : 'No new people to add right now. Check back soon.'}</div>`;
+  return heading + tabs + `<section id="friends-panel" role="tabpanel" aria-labelledby="friends-tab-${friendsTab}" tabindex="0"><div class="friends-toolbar"><button type="button" id="friendsRefresh" onclick="refreshPeople()" ${state.loading || friendActions.hasPending() || state.accountChanged ? "disabled" : ""}>Refresh</button></div>` + notice
     + (state.loading || (!state.ready && !state.error) ? '<p role="status">Loading people…</p>' : '') + content
-    + (state.hasMore ? `<button type="button" id="friendsMore" onclick="loadMorePeople()" ${state.loading || !state.ready || friendActions.hasPending() ? "disabled" : ""}>Load more people</button>` : '')
-    + `<div class="prefs"><h2>Event interests</h2><div class="chips">${categories.map(c => `<button class="${data.interests.includes(c) ? "active" : ""}" aria-pressed="${data.interests.includes(c)}" onclick="toggleInterest(${esc(JSON.stringify(c))})">${esc(c)}</button>`).join("")}</div></div>`;
+    + (state.hasMore ? `<button type="button" id="friendsMore" onclick="loadMorePeople()" ${state.loading || !state.ready || friendActions.hasPending() ? "disabled" : ""}>Load more people</button>` : '') + '</section>';
 }
-function friendAction(id) { return friendActions.act(id); }
+function friendAction(id, decision) { return friendActions.act(id, decision); }
 function refreshFriend(id) { return friendActions.refreshPerson(id); }
+function refreshPeople() { return friendActions.load(false, { section: friendsTab, search: friendsTab === "search" ? friendsSearch : "" }); }
+function loadMorePeople() { return friendActions.load(true); }
+function selectFriendsTab(tab) {
+  if (friendActions.hasPending() || friendActions.view().accountChanged) return;
+  friendsTab = tab;
+  const result = refreshPeople();
+  document.getElementById('friends-tab-' + tab)?.focus();
+  return result;
+}
+function friendsTabKey(event, tab) {
+  const keys = ["friends", "search", "requests"], index = keys.indexOf(tab);
+  const next = event.key === "ArrowRight" ? keys[(index + 1) % 3] : event.key === "ArrowLeft" ? keys[(index + 2) % 3] : event.key === "Home" ? keys[0] : event.key === "End" ? keys[2] : null;
+  if (next) { event.preventDefault(); selectFriendsTab(next); }
+}
 function searchFriends(event) {
   event.preventDefault();
-  return friendActions.load(false, event.currentTarget.elements.query.value);
+  friendsSearch = new FormData(event.target).get("search").trim();
+  return refreshPeople();
 }
-function refreshPeople() { return friendActions.load(); }
-function loadMorePeople() { return friendActions.load(true); }
 function toggleInterest(c) {
   if (!requireAccount()) return;
   data.interests.includes(c)
@@ -859,7 +882,7 @@ async function boot() {
   }
   booting = false;
   render();
-  if (page === "friends" && backendMode === "supabase" && data.user) await friendActions.load();
+  if (page === "friends" && backendMode === "supabase" && data.user) await refreshPeople();
   if (location.hash.startsWith("#event="))
     openEvent(decodeURIComponent(location.hash.slice(7)));
 }
@@ -889,7 +912,12 @@ const plans = window.GatherPlans.create({
 });
 const friendActions = window.GatherFriends.create({
   request: api, account: () => data.user?.id,
-  changed: () => { if (page === "friends") render(); },
+  changed: () => {
+    if (page !== "friends") return;
+    const focusedTab = document.activeElement?.getAttribute?.("role") === "tab" ? document.activeElement.id : null;
+    render();
+    if (focusedTab) document.getElementById(focusedTab)?.focus();
+  },
   notify: toast, login: () => go("login"),
   confirmRemove: person => window.confirm(`Remove ${person.name} from your friends?`),
 });

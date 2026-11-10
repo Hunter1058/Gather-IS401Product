@@ -5,6 +5,7 @@ export const B = '22222222-2222-4222-8222-222222222222';
 export const C = '33333333-3333-4333-8333-333333333333';
 export function friendDatabase() {
   const users = [A, B, C].map((id, i) => ({ user_id: id, display_name: ['Alex', 'Blair <friend>', 'Casey'][i], username: null, is_private: false }));
+  const rsvps = new Map();
   const attempts = [], friendships = new Set(), calls = [], errors = new Map();
   let next = 9007199254740993n;
   const pair = (a, b) => [a, b].sort().join(':');
@@ -20,6 +21,19 @@ export function friendDatabase() {
     calls.push({ actor, name, args: structuredClone(args) });
     if (errors.has(name)) return failure(errors.get(name));
     if (!actor) return failure('42501');
+    if (name === 'get_friend_directory') {
+      const query = (args.p_search || '').toLowerCase().trim();
+      const rows = users.filter(u => u.user_id !== actor).map(user => {
+        const mutual = users.filter(u => friendships.has(pair(actor, u.user_id)) && friendships.has(pair(user.user_id, u.user_id))).length;
+        const shared = [...(rsvps.get(actor) || [])].filter(event => rsvps.get(user.user_id)?.has(event)).length;
+        return { ...user, ...status(actor, user.user_id), mutual_friends: mutual, shared_events: shared };
+      }).filter(u => args.p_section === 'friends' ? u.relationship === 'friends'
+        : args.p_section === 'requests' ? u.relationship.endsWith('_pending') : u.relationship === 'none')
+        .filter(u => !query || u.display_name.toLowerCase().includes(query) || u.username?.toLowerCase().includes(query))
+        .sort((a, b) => (args.p_section === 'search' ? b.mutual_friends + b.shared_events - a.mutual_friends - a.shared_events : 0) || a.user_id.localeCompare(b.user_id));
+      const offset = args.p_after ? rows.findIndex(u => u.user_id === args.p_after) + 1 : 0;
+      return success(rows.slice(offset, offset + args.p_limit));
+    }
     if (name === 'search_friend_people') return success(users.filter(user => user.user_id !== actor &&
       (!args.p_after || user.user_id > args.p_after) && (!args.p_person_id || user.user_id === args.p_person_id))
       .slice(0, args.p_limit).map(user => ({ ...user, ...status(actor, user.user_id) })));
@@ -47,5 +61,5 @@ export function friendDatabase() {
     if (name === 'remove_friend') return success(friendships.delete(pair(actor, args.p_other_user_id)));
     return failure('PGRST202');
   }
-  return { users, attempts, friendships, calls, errors, rpc, status };
+  return { users, rsvps, attempts, friendships, calls, errors, rpc, status };
 }

@@ -71,7 +71,7 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
     assert.deepEqual(deletions, [{ id: C, soft: false }]);
     const listing = await call('/people?limit=1', a, A); assert.equal(listing.status, 200);
     const page = await listing.json(); assert.equal(page.accountId, A); assert.equal(page.nextCursor, B);
-    assert.deepEqual(Object.keys(page.people[0]).sort(), ['id', 'isPrivate', 'name', 'photoUrl', 'relationship', 'requestId', 'username']);
+    assert.deepEqual(Object.keys(page.people[0]).sort(), ['id', 'isPrivate', 'mutualFriends', 'name', 'photoUrl', 'relationship', 'requestId', 'sharedEvents', 'username']);
     assert(!JSON.stringify(page).includes('private-target')); assert(!JSON.stringify(page).includes('do-not-expose'));
     assert.equal((await call('/people?limit=51', a, A)).status, 400);
     assert.equal((await call('/requests', a, null, 'POST', { recipientId: B })).status, 409);
@@ -94,12 +94,23 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
     assert.equal(db.attempts[0].Status, 'cancelled');
     await call('/requests', a, A, 'POST', { recipientId: B });
     const secondId = db.attempts[1].FriendRequestID; assert.notEqual(secondId, person.requestId);
-    await db.rpc(B, 'respond_to_friend_request', { p_request_id: secondId, p_accept: true });
+    assert.equal((await call('/requests/' + secondId + '/accept', a, A, 'POST', {})).status, 403);
+    assert.equal((await call('/requests/' + secondId + '/accept', c, C, 'POST', {})).status, 403);
+    const accepted = await call('/requests/' + secondId + '/accept', b, B, 'POST', {});
+    assert.equal(accepted.status, 200); assert.equal((await accepted.json()).person.relationship, 'friends');
+    const friends = await (await call('/people?section=friends', a, A)).json();
+    assert.deepEqual(friends.people.map(p => p.id), [B]);
+    assert.equal((await call('/people?section=invalid', a, A)).status, 400);
     assert.equal((await (await call('/people?personId=' + B, a, A)).json()).people[0].relationship, 'friends');
     const removed = await call('/' + B, a, A, 'DELETE', {}); assert.equal(removed.status, 200);
     assert.equal((await removed.json()).person.relationship, 'none');
     assert.deepEqual(db.attempts.map(r => r.Status), ['cancelled', 'accepted']);
     assert.equal((await call('/' + B, a, A, 'DELETE', {})).status, 200);
+    await call('/requests', c, C, 'POST', { recipientId: A });
+    const incoming = (await (await call('/people?section=requests', a, A)).json()).people[0];
+    const denied = await call('/requests/' + incoming.requestId + '/deny', a, A, 'POST', {});
+    assert.equal(denied.status, 200); assert.equal((await denied.json()).person.relationship, 'none');
+    assert.equal(db.attempts.at(-1).Status, 'declined');
     const wrongAccount = await call('/requests', b, A, 'POST', { recipientId: C });
     assert.equal(wrongAccount.status, 409); assert.equal((await wrongAccount.json()).code, 'ACCOUNT_CHANGED');
     db.errors.set('search_friend_people', 'PGRST202');
@@ -107,7 +118,7 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
     db.errors.clear();
     db.errors.set('send_friend_request', 'XX000');
     assert.equal((await call('/requests', a, A, 'POST', { recipientId: C })).status, 503);
-    assert.equal(db.attempts.length, 2, 'a failed write never creates a local success');
+    assert.equal(db.attempts.length, 3, 'a failed write never creates a local success');
   } finally {
     await new Promise(resolve => server.close(resolve)); hooks.deregister(); delete globalThis.__friendClientFactory;
   }

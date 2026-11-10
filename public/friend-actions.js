@@ -5,8 +5,8 @@
 "use strict";
 window.GatherFriends = {
   create({ request, account, changed, notify, login, confirmRemove = () => true }) {
+    let section = null, search = "";
     let owner, generation = 0, people = [], nextCursor = null;
-    let search = "";
     let loading = false, ready = false, error = "", accountChanged = false;
     const pending = new Map(), problems = new Map();
     function sync() {
@@ -44,20 +44,22 @@ window.GatherFriends = {
         pendingAction: pending.get(person.id), error: problems.get(person.id) || "" })),
         loading, ready, error, accountChanged, search, hasMore: nextCursor !== null };
     }
-    async function load(more = false, query = search) {
-      const id = sync(), token = generation;
+    async function load(more = false, filter = null) {
+      const id = sync();
+      if (filter) {
+        if (pending.size || accountChanged) return;
+        section = filter.section; search = filter.search || "";
+        generation++; loading = false; people = []; nextCursor = null;
+      }
+      const token = generation;
       if (!id) { login(); return; }
       if (loading || pending.size || accountChanged) return;
       if (more && (!ready || !nextCursor)) return;
-      search = query.trim();
       const after = more ? nextCursor : null;
-      const params = new URLSearchParams();
-      if (after) params.set("after", after);
-      if (search) params.set("q", search);
       const trigger = document.activeElement;
       loading = true; ready = false; error = ""; changed();
       try {
-        const result = validated(await request("/friends/people" + (params.size ? "?" + params : ""),
+        const result = validated(await request("/friends/people?" + (section ? "section=" + section + "&search=" + encodeURIComponent(search) + "&" : "") + (after ? "after=" + encodeURIComponent(after) : ""),
           { headers: { "X-Gather-Account": id } }), id);
         if (!current(id, token)) return;
         if (!Array.isArray(result.people)) throw Error("Unable to load people. Please retry.");
@@ -78,6 +80,10 @@ window.GatherFriends = {
         }
       }
     }
+    function inSection(person) {
+      return !section || (section === "friends" ? person.relationship === "friends"
+        : section === "requests" ? person.relationship.endsWith("_pending") : person.relationship === "none");
+    }
     function restoreFocus(id, trigger) {
       if (trigger?.dataset?.friendUserId !== id) return;
       const controls = [...document.querySelectorAll("[data-friend-user-id]")];
@@ -96,7 +102,7 @@ window.GatherFriends = {
         if (!current(id, token)) return;
         const person = validPerson(result.people?.[0]);
         if (person.id !== personId) throw Error("Unable to confirm this person's status.");
-        people = people.map(previous => previous.id === personId ? person : previous);
+        people = people.map(previous => previous.id === personId ? person : previous).filter(inSection);
         problems.delete(personId);
       } catch (failure) {
         if (!current(id, token)) return;
@@ -107,33 +113,34 @@ window.GatherFriends = {
         if (current(id, token)) { pending.delete(personId); changed(); restoreFocus(personId, trigger); }
       }
     }
-    async function act(personId) {
+    async function act(personId, decision = null) {
       const id = sync(), token = generation;
       if (!id) { login(); return; }
       if (!ready || loading || accountChanged || pending.has(personId) || problems.has(personId)) return;
       const person = people.find(person => person.id === personId);
-      const action = { none: "send", outgoing_pending: "cancel", friends: "remove" }[person?.relationship];
+      const action = person?.relationship === "incoming_pending" && ["accept", "deny"].includes(decision) ? decision : { none: "send", outgoing_pending: "cancel", friends: "remove" }[person?.relationship];
       if (!action) return;
       const trigger = document.activeElement;
       pending.set(personId, action); changed();
       try {
         if (action === "remove" && await confirmRemove(person) !== true) return;
         if (!current(id, token)) return;
-        const path = action === "send" ? "/friends/requests"
+        const path = ["accept", "deny"].includes(action) ? "/friends/requests/" + encodeURIComponent(person.requestId) + "/" + action
+          : action === "send" ? "/friends/requests"
           : action === "cancel" ? "/friends/requests/" + encodeURIComponent(person.requestId)
           : "/friends/" + encodeURIComponent(personId);
         const result = validated(await request(path, {
-          method: action === "send" ? "POST" : "DELETE",
+          method: ["send", "accept", "deny"].includes(action) ? "POST" : "DELETE",
           headers: { "Content-Type": "application/json", "X-Gather-Account": id },
           body: JSON.stringify(action === "send" ? { recipientId: personId } : {}),
         }), id);
         if (!current(id, token)) return;
         const confirmed = validPerson(result.person);
         if (confirmed.id !== personId) throw Error("Unable to confirm this person's status.");
-        people = people.map(previous => previous.id === personId ? confirmed : previous);
+        people = people.map(previous => previous.id === personId ? confirmed : previous).filter(inSection);
         problems.delete(personId);
-        const expected = { send: "outgoing_pending", cancel: "none", remove: "none" };
-        const messages = { send: "Friend request sent", cancel: "Request cancelled", remove: "Friend removed" };
+        const expected = { send: "outgoing_pending", cancel: "none", remove: "none", accept: "friends", deny: "none" };
+        const messages = { send: "Friend request sent", cancel: "Request cancelled", remove: "Friend removed", accept: "Friend request accepted", deny: "Friend request denied" };
         notify(confirmed.relationship === expected[action] ? messages[action] : "Friendship status refreshed.");
       } catch (failure) {
         if (!current(id, token)) return;

@@ -168,3 +168,25 @@ test('private search results expose only the username and no photo', async () =>
   assert.equal(result.people[0].name, '@blair');
   assert.equal(result.people[0].photoUrl, null);
 });
+
+test('directory filters and ranks suggestions using shared RSVPs and mutual friends', async () => {
+  const db = friendDatabase(), client = { rpc: (name, args) => db.rpc(A, name, args) };
+  // Add a fourth profile: B is a friend, C shares an event, D knows B.
+  const D = '44444444-4444-4444-8444-444444444444';
+  db.users.push({ user_id: D, display_name: 'Dana', username: 'dana', is_private: false });
+  db.friendships.add([A, B].sort().join(':')); db.friendships.add([B, D].sort().join(':'));
+  db.rsvps.set(A, new Set(['event-1'])); db.rsvps.set(C, new Set(['event-1']));
+  const suggestions = await people(client, new URLSearchParams({ section: 'search' }));
+  assert.deepEqual(suggestions.people.map(p => p.id), [C, D]);
+  assert.equal(suggestions.people[0].sharedEvents, 1); assert.equal(suggestions.people[1].mutualFriends, 1);
+  const friends = await people(client, new URLSearchParams({ section: 'friends' }));
+  assert.deepEqual(friends.people.map(p => p.id), [B]);
+  const matching = await people(client, new URLSearchParams({ section: 'search', search: 'DANA' }));
+  assert.deepEqual(matching.people.map(p => p.id), [D]);
+  await db.rpc(C, 'send_friend_request', { p_recipient_user_id: A });
+  const requests = await people(client, new URLSearchParams({ section: 'requests' }));
+  assert.deepEqual(requests.people.map(p => p.id), [C]);
+  assert.equal(requests.people[0].relationship, 'incoming_pending');
+  await assert.rejects(people(client, new URLSearchParams({ section: 'unknown' })), { status: 400 });
+  await assert.rejects(people(client, new URLSearchParams({ section: 'search', search: 'a'.repeat(81) })), { status: 400 });
+});

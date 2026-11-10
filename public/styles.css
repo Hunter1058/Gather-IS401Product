@@ -1832,3 +1832,23 @@ footer {
   border-radius: 50%;
   object-fit: cover;
 }
+
+/* Friends directory */
+.friends-tabs { display: flex; gap: .4rem; padding: .4rem; margin: 1.5rem 0; background: var(--glass); border: 1px solid var(--border); border-radius: 1rem; width: fit-content; max-width: 100%; }
+.friends-tabs button { border: 0; background: transparent; color: var(--muted-foreground); }
+.friends-tabs [aria-selected="true"] { background: var(--primary); color: var(--primary-foreground); box-shadow: var(--nav-shadow); }
+.friends-toolbar { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+.friends-search { background: var(--glass); border: 1px solid var(--border); border-radius: 1rem; padding: 1.25rem; margin-bottom: 1.75rem; }
+.friends-search label { display: block; margin-bottom: .65rem; font-weight: 600; }
+.friends-search input { flex: 1; min-width: 0; }
+.friends-grid { margin: 1rem 0 1.75rem; }
+.friends-grid .friend { flex-wrap: wrap; align-items: flex-start; }
+.friends-grid .info { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+.friends-grid .friend-controls { width: 100%; padding-top: .75rem; border-top: 1px solid var(--border); }
+.friend-reasons { color: var(--primary); font-size: .8rem; font-weight: 600; margin-top: .6rem; }
+@media (max-width: 520px) {
+  .friends-tabs { width: 100%; }
+  .friends-tabs button { flex: 1; padding: .7rem .45rem; font-size: .8rem; }
+  .friends-search .row { flex-wrap: wrap; }
+  .friends-search input { flex-basis: 100%; }
+}
