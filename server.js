@@ -192,6 +192,51 @@ export const server = http.createServer(async (req, res) => {
         return json(res, 200, { user: userView(session?.user) });
       }
 
+      if (route === "/settings" && ["GET", "PUT"].includes(req.method)) {
+        const session = await sessionCookies.restore(req, res);
+        if (!session) return json(res, 401, { error: "Sign in to manage your settings." });
+        const accountId = session.user.id;
+        if (req.headers["x-gather-account"] !== accountId)
+          return json(res, 409, { error: "Your account changed. Reload before continuing." });
+
+        if (req.method === "PUT") {
+          const { firstName, lastName, categoryIds, photoUrl } = (await body(req)) ?? {};
+          if (typeof firstName !== "string" || !firstName.trim() || firstName.trim().length > 60 ||
+              typeof lastName !== "string" || lastName.trim().length > 60 ||
+              !Array.isArray(categoryIds) || categoryIds.length > 100 ||
+              categoryIds.some(id => typeof id !== "string" || !/^[1-9][0-9]{0,18}$/.test(id) ||
+                BigInt(id) > 9223372036854775807n))
+            return json(res, 400, { error: "Enter a first name and choose valid categories." });
+          if (photoUrl !== undefined && (typeof photoUrl !== "string" || photoUrl.length > 55000 ||
+              !/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]+={0,2}$/.test(photoUrl)))
+            return json(res, 400, { error: "Choose a valid profile photo." });
+          const { error } = await session.client.rpc(
+            photoUrl === undefined ? "save_profile_settings" : "save_profile_settings_with_photo", {
+            first_name: firstName.trim(), last_name: lastName.trim(), category_ids: categoryIds,
+            ...(photoUrl === undefined ? {} : { photo_url: photoUrl }),
+          });
+          if (error?.code === "23503")
+            return json(res, 400, { error: "A category is no longer available. Reload and try again." });
+          if (error) throw error;
+          return json(res, 200, { firstName: firstName.trim(), lastName: lastName.trim() });
+        }
+
+        const [profile, categories, interests] = await Promise.all([
+          session.client.from("User").select("UserFirstName, UserLastName, Username, UserProfilePhoto").eq("UserID", accountId).single(),
+          session.client.from("EventCategory").select("id:EventCatID::text, EventCatagory").order("EventCatagory"),
+          session.client.from("UserInterest").select("id:EventCatID::text").eq("UserID", accountId),
+        ]);
+        for (const result of [profile, categories, interests]) if (result.error) throw result.error;
+        return json(res, 200, {
+          firstName: profile.data.UserFirstName ?? "",
+          lastName: profile.data.UserLastName ?? "",
+          username: profile.data.Username,
+          photoUrl: profile.data.UserProfilePhoto,
+          categories: categories.data,
+          categoryIds: interests.data.map(({ id }) => id),
+        });
+      }
+
       // Friend actions use the verified per-request account client. The header
       // protects against acting from a tab showing a different signed-in user.
       if (route.startsWith("/friends/")) {

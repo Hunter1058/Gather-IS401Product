@@ -176,6 +176,139 @@ async function signOut() {
     go("home");
   } catch { toast("Could not sign out. Please try again."); }
 }
+const settingsPage = /^\/settings\/?$/.test(location.pathname);
+
+function renderAccountHeader(name = data.user?.name) {
+  const button = $("userButton");
+  button.classList.toggle("profile-avatar", Boolean(data.user));
+  button.textContent = data.user
+    ? (name || "Account").trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase()
+    : "Sign in";
+  button.title = data.user ? name || "My account" : "Sign in";
+  globalThis.accountMenu?.update(data.user, signOut);
+  $("sideUserButton").textContent = data.user ? "Account" : "Sign in";
+}
+
+async function prepareProfilePhoto(file) {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024)
+    throw Error("Choose a JPG, PNG, or WebP image under 5 MB.");
+
+  const image = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 256;
+    const side = Math.min(image.width, image.height);
+    canvas.getContext("2d").drawImage(image, (image.width - side) / 2, (image.height - side) / 2,
+      side, side, 0, 0, 256, 256);
+    const photo = canvas.toDataURL("image/jpeg", 0.7);
+    if (photo.length > 55000) throw Error("Try a smaller photo.");
+    return photo;
+  } finally {
+    image.close();
+  }
+}
+
+async function loadSettings() {
+  const app = $("app");
+  const headers = { "Content-Type": "application/json", "X-Gather-Account": data.user.id };
+  app.innerHTML = '<p class="auth" role="status">Loading profile settings…</p>';
+  try {
+    let profile = await api("/settings", { headers });
+    showSummary();
+
+    function showSummary(message = "") {
+      const name = [profile.firstName, profile.lastName].filter(Boolean).join(" ") || data.user.name || "Your profile";
+      const photo = profile.photoUrl?.trim();
+      const initials = name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase();
+      const interests = profile.categories.filter(category => profile.categoryIds.includes(category.id));
+      renderAccountHeader(name);
+      app.innerHTML = `<section class="auth">
+        <h1>Profile settings</h1>
+        <div class="avatar settings-photo" aria-hidden="true">
+          <span>${esc(initials)}</span>
+          ${photo && /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(photo) ? `<img src="${esc(photo)}" alt="">` : ""}
+        </div>
+        <h2>${esc(name)}</h2>
+        <p>Username: ${profile.username ? esc(profile.username) : "Not set"}</p>
+        <p class="muted">${esc(data.user.email || "")}</p>
+        <h3>Event interests</h3>
+        <p>${interests.length ? interests.map(category => esc(category.EventCatagory || "Unnamed category")).join(", ") : "No interests selected."}</p>
+        <p id="settingsSaved" role="status" tabindex="-1">${esc(message)}</p>
+        <button id="editSettings" class="primary" type="button">Edit profile</button>
+        <button type="button" onclick="go('saved')">View saved plans</button>
+        <button type="button" onclick="signOut()">Sign out</button>
+      </section>`;
+      const photoImage = app.querySelector(".settings-photo img");
+      photoImage?.addEventListener("error", () => photoImage.remove());
+      if (photoImage?.complete && !photoImage.naturalWidth) photoImage.remove();
+      $("editSettings").addEventListener("click", () => {
+        showForm();
+        $("settingsForm").elements.firstName.focus();
+      });
+      if (message) $("settingsSaved").focus();
+    }
+
+    function showForm() {
+      const selected = new Set(profile.categoryIds);
+      app.innerHTML = `<form class="auth" id="settingsForm">
+        <h1>Profile settings</h1>
+        <p class="muted">${esc(data.user.email || "")}</p>
+        <label>First name<input name="firstName" autocomplete="given-name" maxlength="60" required value="${esc(profile.firstName)}"></label>
+        <label>Last name<input name="lastName" autocomplete="family-name" maxlength="60" value="${esc(profile.lastName)}"></label>
+        <label>Profile photo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="photoHint"></label>
+        <p class="muted" id="photoHint">JPG, PNG, or WebP, up to 5 MB. Leave blank to keep your current photo.</p>
+        <fieldset><legend>Event interests</legend>
+          <p class="muted">Choose any categories you’re interested in.</p>
+          <div class="settings-interests">${profile.categories.map(category =>
+            `<label><input type="checkbox" name="categoryId" value="${esc(category.id)}" ${selected.has(category.id) ? "checked" : ""}> ${esc(category.EventCatagory || "Unnamed category")}</label>`
+          ).join("") || "<p>No categories available.</p>"}</div>
+        </fieldset>
+        <p id="settingsStatus" role="status"></p>
+        <button class="primary" type="submit">Save settings</button>
+        <button id="cancelSettings" type="button">Cancel</button>
+      </form>`;
+      $("cancelSettings").addEventListener("click", () => {
+        showSummary();
+        $("editSettings").focus();
+      });
+      $("settingsForm").addEventListener("submit", async event => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const fields = new FormData(form);
+        const submit = form.querySelector('[type="submit"]');
+        const status = $("settingsStatus");
+        submit.disabled = true;
+        $("cancelSettings").disabled = true;
+        status.textContent = "Saving…";
+        try {
+          const file = fields.get("photo");
+          const photoUrl = file?.size ? await prepareProfilePhoto(file) : undefined;
+          const saved = await api("/settings", {
+            method: "PUT",
+            headers,
+            body: JSON.stringify({
+              firstName: fields.get("firstName"),
+              lastName: fields.get("lastName"),
+              categoryIds: fields.getAll("categoryId"),
+              photoUrl,
+            }),
+          });
+          profile = { ...profile, ...saved, photoUrl: photoUrl ?? profile.photoUrl, categoryIds: fields.getAll("categoryId") };
+          showSummary("Settings saved.");
+        } catch (error) {
+          status.textContent = error.message;
+        } finally {
+          submit.disabled = false;
+          if ($("cancelSettings")) $("cancelSettings").disabled = false;
+        }
+      });
+    }
+  } catch (error) {
+    app.innerHTML = '<div class="auth"><h1>Profile settings</h1><p role="alert"></p><button type="button" onclick="boot()">Try again</button></div>';
+    app.querySelector('[role="alert"]').textContent = error.message;
+  }
+}
+
 async function boot() {
   try {
     if (location.protocol !== "file:") {
@@ -183,13 +316,10 @@ async function boot() {
       backendMode = config.mode;
       if (backendMode === "supabase") data = { accounts: [], user: (await api("/auth/session")).user };
     }
-    $("app").innerHTML = auth(signup);
-    if (data.user && /^\/settings\/?$/.test(location.pathname)) {
-      document.title = "Profile settings | Gather";
-      $("app").querySelector(".eyebrow").textContent = "Profile settings";
-    }
-    globalThis.accountMenu?.update(data.user, signOut);
-    $("sideUserButton").textContent = data.user ? "Account" : "Sign in";
+    renderAccountHeader();
+    if (settingsPage) document.title = "Profile settings | Gather";
+    if (settingsPage && data.user && backendMode === "supabase") await loadSettings();
+    else $("app").innerHTML = auth(signup);
     $("footerMode").textContent = backendMode === "demo" ? "Demo mode · Plans saved in this browser" : "Connected to Supabase";
     window.lucide?.createIcons();
   } catch {
