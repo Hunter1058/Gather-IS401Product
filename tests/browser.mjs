@@ -104,8 +104,10 @@ try {
   await control('rsvp').click(); await pressed('rsvp', false);
   assert.deepEqual(records.a.rsvp, ['2']);
 
-  assert.equal(await page.getByRole('button', { name: 'Bookmarked', exact: true }).first().isDisabled(), true);
+  await page.getByRole('button', { name: 'Bookmarked', exact: true }).click();
   await control('bookmark').click();
+  await page.waitForSelector('.card [data-event-id="1"]', { state: 'detached' });
+  await page.getByRole('button', { name: 'All upcoming', exact: true }).click();
   await pressed('bookmark', false);
   await page.getByRole('button', { name: 'All upcoming', exact: true }).click();
 

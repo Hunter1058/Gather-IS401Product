@@ -184,7 +184,9 @@ function listEvents() {
             ? data.saved.includes(e.id) && !past
             : mode === "savedPast"
               ? data.saved.includes(e.id) && past
-              : mode === "rsvp"
+              : mode === "friendsGoing"
+                ? (data.friendsGoing || []).includes(e.id) && !past
+                : mode === "rsvp"
                 ? data.rsvp.includes(e.id) && !past
                 : !past;
       return (
@@ -264,12 +266,14 @@ function toolbar() {
   const tabs = [
     ["upcoming", "All upcoming"],
     ["rsvp", "RSVP’d"],
+    ["saved", "Bookmarked"],
+    ["friendsGoing", "Friends going"],
     ["past", "Past saved events"],
   ];
 
   const tabButtons = tabs.map(([m, l]) =>
     `<button class="${mode === m ? "active" : ""}"
-      onclick="setMode('${m}')">${l}</button>`
+      aria-pressed="${mode === m}" onclick="setMode('${m}')">${l}</button>`
   ).join("");
 
   const foodFilters = [
@@ -371,6 +375,9 @@ setInterval(() => {
     moveSlide(1);
 }, 6500);
 function results() {
+  if (mode === "friendsGoing" && (!data.user || data.friendsGoingError || !stateReady)) {
+    return `<div class="empty" role="status">${esc(!data.user ? "Sign in to see events your friends are going to." : data.friendsGoingError || "Friends’ attendance could not be loaded. Reload to try again.")}</div>`;
+  }
   if (filters.from && filters.to && filters.from > filters.to)
     return '<div class="empty" role="alert">The end date must be on or after the start date. Adjust the date range.</div>';
   let arr = listEvents();
@@ -570,25 +577,20 @@ function renderBase() {
   let links = [
     ["home", "Discover"],
     ["list", "Events"],
-    ["bookmarked", "Bookmarked"],
     ["calendar", "Calendar"],
     ["friends", "Friends"],
   ];
   $("topnav").innerHTML = links
     .map(
       ([p, n]) =>
-        p === "bookmarked"
-          ? `<button type="button" disabled title="Bookmarked page coming soon">${n}</button>`
-          : `<button class="${page === p ? "active" : ""}" onclick="go('${p}')">${n}</button>`,
+        `<button class="${page === p ? "active" : ""}" onclick="go('${p}')">${n}</button>`,
     )
     .join("");
   $("sideNav").innerHTML = [
     ...links,
     ["login", data.user ? "Account" : "Sign in"],
   ]
-    .map(([p, n]) => p === "bookmarked"
-      ? `<button type="button" disabled title="Bookmarked page coming soon">${n}</button>`
-      : `<button onclick="go('${p}')">${n}</button>`)
+    .map(([p, n]) => `<button onclick="go('${p}')">${n}</button>`)
     .join("");
 
     const userButton = $("userButton");

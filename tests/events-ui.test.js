@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 // Run the real page scripts with a small document/HTTP fixture. This exercises
 // page logic and rendered markup; it does not replace a real-browser layout test.
-async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], stateError = false, sessionError = false, href = 'http://fixture/events', navigator = {} } = {}) {
+async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], friendsGoing = [], friendsGoingError = "", stateError = false, sessionError = false, href = 'http://fixture/events', navigator = {} } = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', open: false, hidden: true,
@@ -32,7 +32,7 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
       }
       else if (path === '/api/state') {
         if (stateError) return { ok: false, async json() { return { error: 'Plans could not be loaded' }; } };
-        payload = { accountId: user?.id, state: records };
+        payload = { accountId: user?.id, state: { ...records, friendsGoing, friendsGoingError } };
       } else {
         if (held) await new Promise(resolve => { release = resolve; });
         if (failure) { failure = false; return { ok: false, async json() { return { error: 'Save failed' }; } }; }
@@ -184,4 +184,52 @@ test('mode switches update the selected toolbar chip', async () => {
   assert.match(page.element('toolbar').innerHTML, /class="active" aria-pressed="true" onclick="setMode\('rsvp'\)/);
   page.run('setMode("past")');
   assert.match(page.element('toolbar').innerHTML, /class="active" aria-pressed="true" onclick="setMode\('past'\)/);
+  for (const mode of ['saved', 'friendsGoing']) {
+    page.run(`setMode("${mode}")`);
+    assert.ok(page.element('toolbar').innerHTML.includes(`class="active" aria-pressed="true" onclick="setMode('${mode}')"`));
+  }
+  assert.doesNotMatch(page.element('toolbar').innerHTML, /setFilter\('(bookmarked|friendsGoing)'/);
+});
+
+test('Bookmarked button combines with filters and updates after unsaving', async () => {
+  const page = await pageFixture({ saved: ['1'] });
+  page.run('events.push({ ...events[0], id: "2", name: "Unsaved event" }); setMode("saved")');
+  assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/);
+  assert.doesNotMatch(page.element('results').innerHTML, /Unsaved event/);
+  page.run('setFilter("q", "Unsaved")');
+  assert.match(page.element('results').innerHTML, /No events match/);
+  page.run('setFilter("q", ""); view = "calendar"');
+  assert.equal(page.run('filteredEvents().length'), 1);
+  page.run('view = "list"');
+  await page.run('bookmark("1")');
+  assert.match(page.element('results').innerHTML, /No events match/);
+  page.run('clearFilters()');
+  page.run('setMode("upcoming")');
+  assert.match(page.element('results').innerHTML, /Unsaved event/);
+});
+
+test('Friends going button switches modes and applies to calendar', async () => {
+  const page = await pageFixture({ friendsGoing: ['1'], saved: ['2'] });
+  assert.match(page.element('toolbar').innerHTML, /Friends going/);
+  page.run('events.push({ ...events[0], id: "2", name: "Other event" }); setMode("friendsGoing")');
+  assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/);
+  assert.doesNotMatch(page.element('results').innerHTML, /Other event/);
+  page.run('setMode("saved")');
+  assert.match(page.element('results').innerHTML, /Other event/);
+  page.run('setMode("friendsGoing"); view = "calendar"');
+  assert.equal(page.run('filteredEvents().length'), 1);
+  page.run('clearFilters()');
+  page.run('setMode("upcoming")');
+  assert.equal(page.run('filteredEvents().length'), 2);
+});
+
+test('friends filter explains guest access and attendance load errors', async () => {
+  const guest = await pageFixture({ user: null });
+  guest.run('setMode("friendsGoing")');
+  assert.match(guest.element('results').innerHTML, /Sign in to see events your friends/);
+  const broken = await pageFixture({ friendsGoingError: 'Attendance unavailable' });
+  broken.run('setMode("friendsGoing")');
+  assert.match(broken.element('results').innerHTML, /Attendance unavailable/);
+  broken.run('setMode("upcoming")');
+  assert.match(broken.element('results').innerHTML, /Jazz &lt;friends&gt;/);
 });
