@@ -21,6 +21,7 @@ const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "public");
 const port = Number(process.env.PORT || 3000);
 const supabaseUrl = process.env.SUPABASE_URL;
 const publishableKey = process.env.SUPABASE_KEY;
+const accountDeletionKey = process.env.SUPABASE_ACCOUNT_DELETION_KEY;
 const configured = Boolean(supabaseUrl && publishableKey);
 const production = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
 
@@ -182,6 +183,37 @@ export const server = http.createServer(async (req, res) => {
           const { error } = await session.client.auth.signOut({ scope: "local" });
           if (error) throw Object.assign(Error("Unable to sign out. Try again."), { status: 503 });
         }
+        sessionCookies.clear(res);
+        return json(res, 200, { ok: true });
+      }
+
+      if (route === "/auth/account" && req.method === "DELETE") {
+        const session = await sessionCookies.restore(req, res);
+        if (!session) return json(res, 401, { error: "Sign in to delete your account." });
+        if (req.headers["x-gather-account"] !== session.user.id)
+          return json(res, 409, { error: "Your account changed. Reload before continuing." });
+        if (!accountDeletionKey)
+          return json(res, 503, { error: "Account deletion is unavailable right now." });
+
+        const input = await body(req);
+        if (!input || typeof input.password !== "string" || !input.password ||
+            input.password.length > 4096 || input.confirmation !== "DELETE")
+          return json(res, 400, { error: "Enter your password and type DELETE to confirm." });
+
+        const verifier = makeClient();
+        const verified = await verifier.auth.signInWithPassword({
+          email: session.user.email, password: input.password,
+        });
+        if (verified.error || verified.data.user?.id !== session.user.id)
+          return json(res, 403, { error: "Could not verify your password. Your account was not deleted." });
+        await verifier.auth.signOut({ scope: "local" });
+
+        // The Auth foreign key cascades from the account to its Gather profile.
+        const admin = createClient(supabaseUrl, accountDeletionKey, {
+          auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+        });
+        const { error } = await admin.auth.admin.deleteUser(session.user.id, false);
+        if (error) return json(res, 503, { error: "Could not delete your account. Please try again." });
         sessionCookies.clear(res);
         return json(res, 200, { ok: true });
       }

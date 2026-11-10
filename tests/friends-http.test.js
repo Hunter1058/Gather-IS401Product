@@ -6,12 +6,18 @@ import { friendDatabase, A, B, C } from './helpers/friend-rpc.js';
 
 test('friend HTTP endpoints authenticate, validate actors, persist transitions and preserve history', { skip: !modules.registerHooks }, async () => {
   process.env.NODE_ENV = 'test'; process.env.SUPABASE_URL = 'https://fixture.invalid'; process.env.SUPABASE_KEY = 'test-key';
+  process.env.SUPABASE_ACCOUNT_DELETION_KEY = 'test-deletion-key';
+  const deletions = [];
   const baseDB = database(), db = friendDatabase(), sessions = new Map(); let counter = 0;
   db.users[1].Email = 'private-target@example.test'; db.users[1].Password = 'do-not-expose';
-  globalThis.__friendClientFactory = () => {
+  globalThis.__friendClientFactory = key => {
+    if (key === 'test-deletion-key') return { auth: { admin: {
+      async deleteUser(id, soft) { deletions.push({ id, soft }); return { error: null }; },
+    } } };
     let actor = null, current = null;
     return { ...baseDB.client, rpc: (name, args) => db.rpc(actor, name, args), auth: {
-      async signInWithPassword({ email }) {
+      async signInWithPassword({ email, password }) {
+        if (password !== 'test-pass-123') return { error: { status: 400 } };
         actor = email.startsWith('a@') ? A : email.startsWith('b@') ? B : C;
         current = { access_token: 'access-' + ++counter, refresh_token: 'refresh-' + counter, user: { id: actor, email } };
         sessions.set(current.access_token, current); return { data: { user: current.user, session: current }, error: null };
@@ -27,7 +33,7 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
   };
   const hooks = modules.registerHooks({ resolve(specifier, context, next) {
     if (specifier === '@supabase/supabase-js') return {
-      url: 'data:text/javascript,export const createClient = () => globalThis.__friendClientFactory();', shortCircuit: true,
+      url: 'data:text/javascript,export const createClient = (_url, key) => globalThis.__friendClientFactory(key);', shortCircuit: true,
     };
     return next(specifier, context);
   } });
@@ -46,6 +52,23 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
   try {
     assert.equal((await call('/people')).status, 401);
     const a = await login('a@example.test'), b = await login('b@example.test'), c = await login('c@example.test');
+    const deleteAccount = (cookie, actor, body, origin) => fetch(base + '/api/auth/account', {
+      method: 'DELETE',
+      headers: { ...(cookie ? { Cookie: cookie } : {}), 'X-Gather-Account': actor,
+        ...(origin ? { Origin: origin } : {}) },
+      body: JSON.stringify(body),
+    });
+    const confirmation = { password: 'test-pass-123', confirmation: 'DELETE', userId: A };
+    assert.equal((await deleteAccount(null, C, confirmation)).status, 401);
+    assert.equal((await deleteAccount(c, A, confirmation)).status, 409);
+    assert.equal((await deleteAccount(c, C, confirmation, 'https://attacker.example')).status, 403);
+    assert.equal((await deleteAccount(c, C, { ...confirmation, password: 'wrong' })).status, 403);
+    assert.equal((await deleteAccount(c, C, { ...confirmation, confirmation: '' })).status, 400);
+    assert.deepEqual(deletions, []);
+    const deleted = await deleteAccount(c, C, confirmation);
+    assert.equal(deleted.status, 200);
+    assert(deleted.headers.getSetCookie().some(cookie => cookie.includes('Max-Age=0')));
+    assert.deepEqual(deletions, [{ id: C, soft: false }]);
     const listing = await call('/people?limit=1', a, A); assert.equal(listing.status, 200);
     const page = await listing.json(); assert.equal(page.accountId, A); assert.equal(page.nextCursor, B);
     assert.deepEqual(Object.keys(page.people[0]).sort(), ['id', 'isPrivate', 'name', 'photoUrl', 'relationship', 'requestId', 'username']);

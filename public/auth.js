@@ -238,6 +238,16 @@ async function loadSettings() {
         <button id="editSettings" class="primary" type="button">Edit profile</button>
         <button type="button" onclick="go('saved')">View saved plans</button>
         <button type="button" onclick="signOut()">Sign out</button>
+        <details class="delete-account">
+          <summary>Delete account</summary>
+          <p>This permanently deletes your profile, saved plans, and friendships.</p>
+          <form id="deleteAccountForm">
+            <label>Current password<input name="password" type="password" autocomplete="current-password" maxlength="4096" required></label>
+            <label>Type DELETE to confirm<input name="confirmation" autocomplete="off" required pattern="DELETE"></label>
+            <button type="submit">Permanently delete my account</button>
+            <p id="deleteAccountStatus" role="status"></p>
+          </form>
+        </details>
       </section>`;
       const photoImage = app.querySelector(".settings-photo img");
       photoImage?.addEventListener("error", () => photoImage.remove());
@@ -245,6 +255,28 @@ async function loadSettings() {
       $("editSettings").addEventListener("click", () => {
         showForm();
         $("settingsForm").elements.firstName.focus();
+      });
+      $("deleteAccountForm").addEventListener("submit", async event => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const fields = new FormData(form);
+        const submit = form.querySelector('[type="submit"]');
+        const status = $("deleteAccountStatus");
+        submit.disabled = true;
+        status.textContent = "Deleting your account…";
+        try {
+          await api("/auth/account", {
+            method: "DELETE", headers,
+            body: JSON.stringify({
+              password: fields.get("password"),
+              confirmation: fields.get("confirmation"),
+            }),
+          });
+          location.replace("/");
+        } catch (error) {
+          status.textContent = error.message;
+          submit.disabled = false;
+        }
       });
       if (message) $("settingsSaved").focus();
     }
