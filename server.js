@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { authSessions } from "./lib/auth-session.js";
 import { isSameOrigin } from "./lib/request-origin.js";
-import { people, userId, friendBody, sendRequest, cancelRequest, removeFriend, respondRequest } from "./lib/friends.js";
+import { people, userId, friendBody, sendRequest, cancelRequest, removeFriend, respondRequest, connections } from "./lib/friends.js";
 import { planInput, profileId, readPlans, writePlan } from "./lib/event-plans.js";
 
 // Server and Supabase configuration. Supabase credentials must be provided together.
@@ -283,6 +283,9 @@ export const server = http.createServer(async (req, res) => {
         const expected = req.headers["x-gather-account"];
         if ((expected && expected !== session.user.id) || (req.method !== "GET" && expected !== session.user.id))
           return json(res, 409, { error: "Your account changed. Reload the page before changing friendships.", code: "ACCOUNT_CHANGED" });
+        const shared = /^\/friends\/people\/([^/]+)\/connections$/.exec(route);
+        if (shared && req.method === "GET")
+          return json(res, 200, { accountId: session.user.id, ...await connections(session.client, session.user.id, shared[1], url.searchParams) });
         if (route === "/friends/people" && req.method === "GET")
           return json(res, 200, { accountId: session.user.id, ...await people(session.client, url.searchParams) });
         if (route === "/friends/requests" && req.method === "POST") {

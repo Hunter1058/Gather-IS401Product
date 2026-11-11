@@ -1853,3 +1853,10 @@ footer {
   .friends-search .row { flex-wrap: wrap; }
   .friends-search input { flex-basis: 100%; }
 }
+
+/* Shared connection details preserve the existing friend card layout. */
+.friend-profile-name { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: inherit; text-align: left; }
+.friend-profile-name:hover { text-decoration: underline; }
+.friend-connection-section { margin-top: 1.5rem; }
+.friend-connection-section li { margin: .65rem 0; overflow-wrap: anywhere; }
+.friend-connection-section small { display: block; color: var(--muted-foreground); }

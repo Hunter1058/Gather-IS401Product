@@ -38,7 +38,7 @@ function rankPerson(user, input) {
 }
 export function friendDatabase() {
   const users = [A, B, C].map((id, i) => ({ user_id: id, display_name: ['Alex', 'Blair <friend>', 'Casey'][i], username: null, is_private: false }));
-  const rsvps = new Map();
+  const rsvps = new Map(), interests = new Map(), eventRecords = new Map(), categoryRecords = new Map();
   const attempts = [], friendships = new Set(), calls = [], errors = new Map();
   let next = 9007199254740993n;
   const pair = (a, b) => [a, b].sort().join(':');
@@ -54,6 +54,45 @@ export function friendDatabase() {
     calls.push({ actor, name, args: structuredClone(args) });
     if (errors.has(name)) return failure(errors.get(name));
     if (!actor) return failure('42501');
+    if (name === 'get_friend_connections') {
+      const target=users.find(u=>u.user_id===args.p_person_id);
+      if (!target) return failure('23503');
+      if (target.is_private) return success([]);
+      let rows;
+      if (args.p_kind==='friends') rows=users.filter(u=>u.user_id!==actor && u.user_id!==target.user_id && !u.is_private &&
+        friendships.has(pair(actor,u.user_id)) && friendships.has(pair(target.user_id,u.user_id)))
+        .sort((a,b)=>a.user_id.localeCompare(b.user_id))
+        .map(u=>({item_id:u.user_id,label:u.display_name,username:u.username}));
+      else if (args.p_kind==='events') rows=[...(rsvps.get(actor)||[])].filter(id=>rsvps.get(target.user_id)?.has(id))
+        .map(id=>({item_id:id,label:eventRecords.get(id)?.name || 'Event '+id,event_date:eventRecords.get(id)?.date,
+          event_location:eventRecords.get(id)?.location}));
+      else rows=[...(interests.get(actor)||[])].filter(id=>interests.get(target.user_id)?.has(id))
+        .map(id=>({item_id:id,label:categoryRecords.get(id) || 'Interest '+id}));
+      if (args.p_kind!=='friends') rows.sort((a,b)=>BigInt(a.item_id)<BigInt(b.item_id)?-1:1);
+      return success(rows.filter(row=>!args.p_after || (args.p_kind==='friends'?row.item_id>args.p_after:BigInt(row.item_id)>BigInt(args.p_after))).slice(0,args.p_limit));
+    }
+    if (name === 'get_friend_recommendations') {
+      const visible = users.filter(u => u.user_id === actor || u.is_private === false).map(u => u.user_id);
+      const distances = new Map([[actor, 0]]), queue = [actor];
+      for (let i=0; i<queue.length; i++) {
+        const node = queue[i], distance = distances.get(node);
+        if (distance >= 3) continue;
+        for (const other of visible) if (!distances.has(other) && friendships.has(pair(node, other))) {
+          distances.set(other, distance + 1); queue.push(other);
+        }
+      }
+      const rows = users.filter(u => u.user_id !== actor && u.is_private === false).map(user => {
+        const degree = distances.get(user.user_id);
+        return { ...user, ...status(actor, user.user_id), connection_degree: [2,3].includes(degree) ? degree : null,
+          mutual_friends: visible.filter(id => friendships.has(pair(actor, id)) && friendships.has(pair(user.user_id, id))).length,
+          shared_events: [...(rsvps.get(actor) || [])].filter(event => rsvps.get(user.user_id)?.has(event)).length,
+          shared_interests: [...(interests.get(actor) || [])].filter(interest => interests.get(user.user_id)?.has(interest)).length };
+      }).sort((a,b) => (a.connection_degree ?? 99)-(b.connection_degree ?? 99) || b.shared_events-a.shared_events ||
+        b.shared_interests-a.shared_interests || b.mutual_friends-a.mutual_friends || a.user_id.localeCompare(b.user_id));
+      const offset = args.p_after ? rows.findIndex(u => u.user_id === args.p_after)+1 : 0;
+      return success(rows.slice(offset).filter(u => u.relationship === 'none' &&
+        (u.connection_degree || u.shared_events || u.shared_interests)).slice(0,args.p_limit));
+    }
     if (name === 'get_friend_directory') {
       const query = (args.p_search || '').toLowerCase().trim().replace(/\s+/g, ' ');
       const rows = users.filter(u => u.user_id !== actor).map(user => {
@@ -95,5 +134,5 @@ export function friendDatabase() {
     if (name === 'remove_friend') return success(friendships.delete(pair(actor, args.p_other_user_id)));
     return failure('PGRST202');
   }
-  return { users, rsvps, attempts, friendships, calls, errors, rpc, status };
+  return { users, rsvps, interests, eventRecords, categoryRecords, attempts, friendships, calls, errors, rpc, status };
 }
