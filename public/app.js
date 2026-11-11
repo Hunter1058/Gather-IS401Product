@@ -579,9 +579,9 @@ function friendsPage() {
   const cards = people => `<div class="grid friends-grid">${people.map(person => friendCard(person, state)).join("")}</div>`;
   let content = "";
   if (friendsTab === "search") {
-    const suggested = state.people.filter(p => p.sharedEvents > 0 || p.mutualFriends > 0);
-    const others = state.people.filter(p => !(p.sharedEvents > 0 || p.mutualFriends > 0));
-    content = `<form class="friends-search" onsubmit="searchFriends(event)"><label for="friendsSearch">Find someone on Gather</label><div class="row"><input id="friendsSearch" name="search" type="search" maxlength="60" placeholder="Username or public name" value="${esc(friendsSearch)}"><button class="primary" type="submit" ${friendActions.hasPending() ? "disabled" : ""}>Search</button></div></form><h2>${friendsSearch ? "Search results" : "Suggested friends"}</h2><p class="muted">People who RSVP’d to the same events or know your friends appear first.</p>`;
+    const suggested = friendsSearch ? state.people : state.people.filter(p => p.sharedEvents > 0 || p.mutualFriends > 0);
+    const others = friendsSearch ? [] : state.people.filter(p => !(p.sharedEvents > 0 || p.mutualFriends > 0));
+    content = `<form class="friends-search" onsubmit="searchFriends(event)"><label for="friendsSearch">Find someone on Gather</label><div class="row"><input id="friendsSearch" name="search" type="search" maxlength="254" placeholder="Username, public name, or email" aria-describedby="friendsSearchHelp" value="${esc(friendsSearch)}"><button class="primary" type="submit" ${friendActions.hasPending() ? "disabled" : ""}>Search</button></div></form><p id="friendsSearchHelp" class="muted">Search partial usernames or emails, or first and last names with close spellings. Private profiles can be found by username only. You can start usernames with @.</p><h2>${friendsSearch ? "Search results" : "Suggested friends"}</h2><p class="muted">${friendsSearch ? "Username matches appear first, followed by names, then emails." : "People who RSVP’d to the same events or know your friends appear first."}</p>`;
     if (suggested.length) content += cards(suggested);
     if (others.length) content += `<h2>Explore people</h2>` + cards(others);
   } else if (friendsTab === "requests") {

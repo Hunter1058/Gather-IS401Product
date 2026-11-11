@@ -127,3 +127,20 @@ test('public cards show names above usernames and missing usernames have no plac
     assert.match(f.html(), isPrivate ? />Private account<\/h3>/ : />Blair &lt;friend&gt;<\/h3>/);
   }
 });
+
+test('search result order stays relevant rather than regrouping by recommendations', async () => {
+  const f = await fixture();
+  Object.assign(f.db.users[1], { username: 'jon_username', first_name: 'Other', last_name: 'Person' });
+  Object.assign(f.db.users[2], { username: 'other', first_name: 'Jonathan', last_name: 'Thompson', display_name: 'Jonathan Thompson' });
+  const C = f.db.users[2].user_id;
+  f.db.rsvps.set(A, new Set(['1'])); f.db.rsvps.set(C, new Set(['1']));
+  await f.run("selectFriendsTab('search')");
+  await f.run("friendsSearch = 'jon'; refreshPeople()");
+  assert(f.html().indexOf(`data-person-id="${B}"`) < f.html().indexOf(`data-person-id="${C}"`));
+  assert.match(f.html(), /placeholder="Username, public name, or email"/);
+  assert.match(f.html(), /Private profiles can be found by username only/);
+  assert.match(f.html(), /maxlength="254"/);
+  await f.run(`friendAction('${B}')`);
+  assert.match(f.html(), /Cancel request/);
+  assert.match(f.html(), new RegExp(`data-person-id="${B}"`));
+});
