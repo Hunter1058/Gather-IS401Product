@@ -188,5 +188,5 @@ test('directory filters and ranks suggestions using shared RSVPs and mutual frie
   assert.deepEqual(requests.people.map(p => p.id), [C]);
   assert.equal(requests.people[0].relationship, 'incoming_pending');
   await assert.rejects(people(client, new URLSearchParams({ section: 'unknown' })), { status: 400 });
-  await assert.rejects(people(client, new URLSearchParams({ section: 'search', search: 'a'.repeat(81) })), { status: 400 });
+  await assert.rejects(people(client, new URLSearchParams({ section: 'search', search: 'a'.repeat(255) })), { status: 400 });
 });

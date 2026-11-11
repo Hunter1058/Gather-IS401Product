@@ -154,7 +154,9 @@ try {
   await control('bookmark').click(); await page.waitForURL('**/login');
   await page.getByLabel('Email', { exact: true }).fill('a@example.test');
   await page.getByLabel('Password', { exact: true }).fill('test-pass-123');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.locator('form.auth')
+  .getByRole('button', { name: 'Sign in', exact: true })
+  .click();
   await page.waitForURL(base + '/');
   await page.goto(base + '/events'); await page.waitForSelector('.event-card');
   assert.equal(await page.locator('#userButton').textContent(), 'SA');

@@ -3,6 +3,39 @@
 export const A = '11111111-1111-4111-8111-111111111111';
 export const B = '22222222-2222-4222-8222-222222222222';
 export const C = '33333333-3333-4333-8333-333333333333';
+// Search fixture mirrors the contract for UI/HTTP tests, not SQL execution.
+function editDistance(a, b) {
+  let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(next[j-1]+1, row[j]+1, row[j-1]+(a[i-1] === b[j-1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length];
+}
+function nameMatches(query, name, fuzzy) {
+  if (!name.trim() || query.length > 80) return false;
+  return query.split(/\s+/).every(q => name.split(/\s+/).some(word => word.includes(q) ||
+    (fuzzy && q.length >= 4 && editDistance(q, word) <= (q.length >= 8 ? 2 : 1))));
+}
+function rankPerson(user, input) {
+  const query = input.toLowerCase().trim().replace(/\s+/g, ' ');
+  if (!query) return 0;
+  if (query === '@') return null;
+  const handleOnly = query.startsWith('@'), emailOnly = !handleOnly && query.includes('@');
+  const handleQuery = handleOnly ? query.slice(1) : query;
+  const handle = (user.username || '').toLowerCase();
+  const name = (user.first_name != null || user.last_name != null
+    ? [user.first_name, user.last_name].filter(Boolean).join(' ') : user.display_name || '').toLowerCase().trim();
+  if (!emailOnly && handleQuery && handle === handleQuery) return 1;
+  if (!emailOnly && handleQuery && handle.startsWith(handleQuery)) return 2;
+  if (!emailOnly && handleQuery && handle.includes(handleQuery)) return 3;
+  if (!user.is_private && !handleOnly && !emailOnly && name === query) return 4;
+  if (!user.is_private && !handleOnly && !emailOnly && nameMatches(query, name, false)) return 5;
+  if (!user.is_private && !handleOnly && !emailOnly && nameMatches(query, name, true)) return 6;
+  if (!user.is_private && (user.email || '').toLowerCase().includes(query)) return 7;
+  return null;
+}
 export function friendDatabase() {
   const users = [A, B, C].map((id, i) => ({ user_id: id, display_name: ['Alex', 'Blair <friend>', 'Casey'][i], username: null, is_private: false }));
   const rsvps = new Map();
@@ -22,15 +55,16 @@ export function friendDatabase() {
     if (errors.has(name)) return failure(errors.get(name));
     if (!actor) return failure('42501');
     if (name === 'get_friend_directory') {
-      const query = (args.p_search || '').toLowerCase().trim();
+      const query = (args.p_search || '').toLowerCase().trim().replace(/\s+/g, ' ');
       const rows = users.filter(u => u.user_id !== actor).map(user => {
         const mutual = users.filter(u => friendships.has(pair(actor, u.user_id)) && friendships.has(pair(user.user_id, u.user_id))).length;
         const shared = [...(rsvps.get(actor) || [])].filter(event => rsvps.get(user.user_id)?.has(event)).length;
-        return { ...user, ...status(actor, user.user_id), mutual_friends: mutual, shared_events: shared };
+        return { ...user, ...status(actor, user.user_id), match_rank: rankPerson(user, query),
+          mutual_friends: user.is_private ? 0 : mutual, shared_events: user.is_private ? 0 : shared };
       }).filter(u => args.p_section === 'friends' ? u.relationship === 'friends'
-        : args.p_section === 'requests' ? u.relationship.endsWith('_pending') : u.relationship === 'none')
-        .filter(u => !query || u.display_name.toLowerCase().includes(query) || u.username?.toLowerCase().includes(query))
-        .sort((a, b) => (args.p_section === 'search' ? b.mutual_friends + b.shared_events - a.mutual_friends - a.shared_events : 0) || a.user_id.localeCompare(b.user_id));
+        : args.p_section === 'requests' ? u.relationship.endsWith('_pending') : Boolean(query) || u.relationship === 'none')
+        .filter(u => u.match_rank !== null)
+        .sort((a, b) => a.match_rank - b.match_rank || (args.p_section === 'search' ? b.mutual_friends + b.shared_events - a.mutual_friends - a.shared_events : 0) || a.user_id.localeCompare(b.user_id));
       const offset = args.p_after ? rows.findIndex(u => u.user_id === args.p_after) + 1 : 0;
       return success(rows.slice(offset, offset + args.p_limit));
     }

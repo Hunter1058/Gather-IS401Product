@@ -106,8 +106,31 @@ try {
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await page.getByRole('heading', { name: 'Casey', exact: true }).waitFor();
   assert.equal(await card().count(), 0);
-  await page.getByLabel('Find someone on Gather').fill('');
-  await page.getByRole('button', { name: 'Search', exact: true }).click(); await status('none');
+  Object.assign(db.users[1], { username: 'campus_blair', first_name: 'Jonathan', last_name: 'Thompson', email: 'blair.student@byu.edu' });
+  const searchPeople = async query => {
+    const response = page.waitForResponse(response => response.url().includes('/api/friends/people?') && response.url().includes('section=search'));
+    await page.getByLabel('Find someone on Gather').fill(query);
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await response;
+    await page.getByRole('button', { name: 'Refresh', exact: true }).waitFor({ state: 'visible' });
+    await page.waitForFunction(() => !document.getElementById('friendsRefresh').disabled);
+  };
+  for (const query of ['@campus_bla', 'Jonathon', 'Thompson', 'student@byu']) {
+    await searchPeople(query); await status('none');
+    assert.equal(await card().locator('.friend-username').textContent(), '@campus_blair');
+  }
+  for (const query of ['@campus_blar', 'blar.student@byu.edu']) {
+    await searchPeople(query); assert.equal(await card().count(), 0);
+  }
+  db.users[1].is_private = true;
+  for (const query of ['Jonathan', 'student@byu']) {
+    await searchPeople(query); assert.equal(await card().count(), 0);
+  }
+  await searchPeople('@campus'); await status('none');
+  await card().getByRole('heading', { name: 'Private account', exact: true }).waitFor();
+  assert.equal(await card().locator('.friend-username').textContent(), '@campus_blair');
+  db.users[1].is_private = false;
+  await searchPeople(''); await status('none');
   failWrite = true; await action().click();
   await card().getByRole('button', { name: 'Refresh status', exact: true }).waitFor();
   assert.equal(await action().isDisabled(), true);
@@ -127,7 +150,7 @@ try {
   await page.getByText('Sign in to connect with people.', { exact: false }).waitFor();
   assert.equal(await page.locator('[data-person-id]').count(), 0);
   assert.deepEqual(errors, []);
-  console.log('PASS: tabs, suggested RSVPs, paging, send/cancel, accept/deny, reload, duplicate prevention, remove confirmation, search, failed-save recovery, stale accounts, keyboard, guest privacy, mobile.');
+  console.log('PASS: tabs, suggested RSVPs, paging, send/cancel, accept/deny, reload, duplicate prevention, remove confirmation, partial username/email search, fuzzy names, private discovery, failed-save recovery, stale accounts, keyboard, guest privacy, mobile.');
 
 } finally {
   if (browser) await browser.close();

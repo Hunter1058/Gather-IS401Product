@@ -82,7 +82,7 @@ window.GatherFriends = {
     }
     function inSection(person) {
       return !section || (section === "friends" ? person.relationship === "friends"
-        : section === "requests" ? person.relationship.endsWith("_pending") : person.relationship === "none");
+        : section === "requests" ? person.relationship.endsWith("_pending") : Boolean(search) || person.relationship === "none");
     }
     function restoreFocus(id, trigger) {
       if (trigger?.dataset?.friendUserId !== id) return;

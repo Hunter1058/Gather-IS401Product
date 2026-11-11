@@ -113,6 +113,22 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
     assert.equal(db.attempts.at(-1).Status, 'declined');
     const wrongAccount = await call('/requests', b, A, 'POST', { recipientId: C });
     assert.equal(wrongAccount.status, 409); assert.equal((await wrongAccount.json()).code, 'ACCOUNT_CHANGED');
+    Object.assign(db.users[1], { username: 'campus_blair', first_name: 'Jonathan', last_name: 'Thompson', email: 'blair.student@byu.edu' });
+    const querySearch = async text => {
+      const result = await call('/people?' + new URLSearchParams({ section: 'search', search: text }), a, A);
+      assert.equal(result.status, 200); return result.json();
+    };
+    for (const text of ['@campus_bla', 'Jonathon', 'Thompson', 'student@byu']) {
+      const result = await querySearch(text);
+      assert.deepEqual(result.people.map(p => p.id), [B], text);
+      assert(!JSON.stringify(result).includes('blair.student@byu.edu'));
+    }
+    assert.deepEqual((await querySearch('@campus_blar')).people, []);
+    assert.deepEqual((await querySearch('blar.student@byu.edu')).people, []);
+    db.users[1].is_private = true;
+    assert.deepEqual((await querySearch('student@byu')).people, []);
+    assert.deepEqual((await querySearch('Jonathan')).people, []);
+    assert.deepEqual((await querySearch('@campus')).people.map(p => p.id), [B]);
     db.errors.set('search_friend_people', 'PGRST202');
     assert.equal((await call('/people', a, A)).status, 503);
     db.errors.clear();
