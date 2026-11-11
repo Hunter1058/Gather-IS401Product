@@ -1845,6 +1845,7 @@ footer {
 .friends-grid .friend { flex-wrap: wrap; align-items: flex-start; }
 .friends-grid .info { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
 .friends-grid .friend-controls { width: 100%; padding-top: .75rem; border-top: 1px solid var(--border); }
+.friend-username { font-size: .8rem; line-height: 1.4; margin-top: -.25rem; }
 .friend-reasons { color: var(--primary); font-size: .8rem; font-weight: 600; margin-top: .6rem; }
 @media (max-width: 520px) {
   .friends-tabs { width: 100%; }
