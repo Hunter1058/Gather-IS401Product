@@ -74,6 +74,39 @@ try {
   await page.getByRole('button', { name: 'Show search & filters', exact: true }).click();
   assert.equal(await page.getByRole('textbox', { name: 'Search events' }).isVisible(), true);
 
+  for (const width of [320, 390, 480, 600, 768]) {
+    await page.setViewportSize({ width, height: 740 });
+    await page.locator('#eventFiltersButton').click();
+    await page.locator('.category-dropdown summary').click();
+    const issues = await page.locator('#toolbar').evaluate(toolbar => {
+      const issues = [];
+      if (document.documentElement.scrollWidth > innerWidth) issues.push('page overflow');
+      for (const element of toolbar.querySelectorAll('button, select, input:not([type="checkbox"]), summary, .category-options label')) {
+        if (!element.getClientRects().length) continue;
+        const rect = element.getBoundingClientRect();
+        if (rect.left < 0 || rect.right > innerWidth) issues.push('control outside viewport');
+        if (rect.height < 44) issues.push('touch target below 44px');
+      }
+      if (getComputedStyle(document.getElementById('eventSearchControls')).overflowY === 'auto') issues.push('nested scroll');
+      return issues;
+    });
+    assert.deepEqual(issues, [], `event filters at ${width}px`);
+    await page.getByRole('checkbox', { name: /Arts/ }).check();
+    assert.equal(await page.locator('.event-card').count(), 2);
+    await page.getByLabel('From date', { exact: true }).fill(dateKey);
+    assert.equal(await page.locator('.event-card').count(), 2);
+    await page.getByRole('button', { name: 'Reset search and filters', exact: true }).click();
+    assert.equal(await page.locator('#eventFilters').isVisible(), false);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  await page.getByRole('button', { name: 'Calendar view', exact: true }).click();
+  await page.getByRole('button', { name: 'List view', exact: true }).waitFor();
+  await page.locator('.calendar').waitFor();
+  await page.getByRole('button', { name: 'List view', exact: true }).click();
+  await page.getByRole('button', { name: 'Calendar view', exact: true }).waitFor();
+  await page.locator('.event-card').first().waitFor();
+
   await page.locator('.event-card .metadata').first().click();
   await page.waitForFunction(() => document.getElementById('modal').open);
   await page.getByRole('button', { name: 'Close event details' }).click();
@@ -154,7 +187,9 @@ try {
   await control('bookmark').click(); await page.waitForURL('**/login');
   await page.getByLabel('Email', { exact: true }).fill('a@example.test');
   await page.getByLabel('Password', { exact: true }).fill('test-pass-123');
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.locator('form.auth')
+  .getByRole('button', { name: 'Sign in', exact: true })
+  .click();
   await page.waitForURL(base + '/');
   await page.goto(base + '/events'); await page.waitForSelector('.event-card');
   assert.equal(await page.locator('#userButton').textContent(), 'SA');

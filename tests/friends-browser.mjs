@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, extname } from 'node:path';
 import { createRequire } from 'node:module';
-import { people, sendRequest, cancelRequest, removeFriend } from '../lib/friends.js';
+import { people, sendRequest, cancelRequest, removeFriend, respondRequest, connections } from '../lib/friends.js';
 import { friendDatabase, A, B } from './helpers/friend-rpc.js';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || '@playwright/test');
@@ -28,7 +28,9 @@ try {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.route('https://fonts.googleapis.com/**', route => route.abort());
-  const db = friendDatabase(); let account = A, delay = 0, failWrite = false;
+  const db = friendDatabase();
+  db.interests.set(A, new Set(['1'])); db.interests.set(db.users[2].user_id, new Set(['1']));
+  let account = A, delay = 0, failWrite = false;
   await context.route('**/api/**', async route => {
     const req = route.request(), url = new URL(req.url()); let status = 200, payload;
     try {
@@ -42,15 +44,18 @@ try {
         if (req.headers()['x-gather-account'] !== account)
           throw Object.assign(Error('Your account changed. Reload the page.'), { status: 409, code: 'ACCOUNT_CHANGED' });
         const client = { rpc: (name, args) => db.rpc(account, name, args) };
-        if (path === '/api/friends/people') {
+        if (path.endsWith('/connections')) {
+          payload={accountId:account,...await connections(client,account,path.split('/')[4],url.searchParams)};
+        } else if (path === '/api/friends/people') {
           // One-row pages intentionally exercise Load more with the small fixture.
-          if (!url.searchParams.has('personId')) url.searchParams.set('limit', '1');
+          if (!url.searchParams.has('personId') && !url.searchParams.has('limit')) url.searchParams.set('limit', '1');
           payload = { accountId: account, ...await people(client, url.searchParams) };
         } else {
           if (delay) await new Promise(resolve => setTimeout(resolve, delay));
           if (failWrite) { failWrite = false; throw Object.assign(Error('Simulated save failure'), { status: 503 }); }
           const input = req.postDataJSON();
-          const person = req.method() === 'POST' ? await sendRequest(client, account, input.recipientId)
+          const response = /\/requests\/([^/]+)\/(accept|deny)$/.exec(path);
+          const person = response ? await respondRequest(client, account, response[1], response[2] === 'accept') : req.method() === 'POST' ? await sendRequest(client, account, input.recipientId)
             : path.includes('/requests/') ? await cancelRequest(client, account, path.split('/').at(-1))
             : await removeFriend(client, account, path.split('/').at(-1));
           payload = { accountId: account, person };
@@ -62,52 +67,139 @@ try {
   const page = await context.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const base = `http://127.0.0.1:${server.address().port}`;
+  const checkResponsiveFriends = async () => {
+    for (const width of [320, 360, 390, 520, 768, 1024]) {
+      await page.setViewportSize({ width, height: 844 });
+      const issues = await page.evaluate(() => {
+        const issues = [];
+        if (document.documentElement.scrollWidth > innerWidth) issues.push('page overflows');
+        for (const card of document.querySelectorAll('.friends-grid .friend')) {
+          if (card.scrollWidth > card.clientWidth + 1 || card.scrollHeight > card.clientHeight + 1) issues.push('card content clipped');
+          for (const button of card.querySelectorAll('.friend-controls button')) {
+            const bounds = button.getBoundingClientRect(), parent = card.getBoundingClientRect();
+            if (bounds.height < 44 || bounds.left < parent.left || bounds.right > parent.right) issues.push('action too small or outside card');
+          }
+        }
+        return issues;
+      });
+      assert.deepEqual(issues, [], `Friends layout at ${width}px`);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+  };
   const card = () => page.locator(`[data-person-id="${B}"]`);
   const action = () => card().locator('[data-friend-control="action"]');
   const status = expected => page.waitForFunction(({ id, expected }) =>
     document.querySelector(`[data-person-id="${id}"] [data-friend-status]`)?.dataset.friendStatus === expected, { id: B, expected });
+  db.rsvps.set(A, new Set(['1'])); db.rsvps.set(B, new Set(['1']));
   await page.goto(base + '/');
   await page.getByRole('button', { name: 'Friends', exact: true }).first().click();
-  await page.waitForURL(base + '/#friends'); await status('none');
-  assert.equal(await page.locator('[data-person-id]').count(), 1);
+  await page.waitForURL(base + '/#friends');
+  await page.getByText('Your friend list starts here.', { exact: false }).waitFor();
+  await page.getByRole('tab', { name: 'Find Friends' }).click(); await status('none');
+  await page.getByText('1 shared RSVP', { exact: true }).waitFor();
+  assert.equal(await page.locator('[data-person-id]').count(), 2);
+  assert.equal(await page.locator('#suggestedFriends [data-person-id]').count(), 2);
+  await checkResponsiveFriends();
+  const tile = await card().boundingBox();
+  assert(Math.abs(tile.width - tile.height) < 2, 'suggested friend tiles should be square');
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileTile = await card().boundingBox();
+  assert(Math.abs(mobileTile.width - mobileTile.height) < 2, 'mobile friend tiles should stay square');
+  assert.equal(await page.getByRole('button', { name: 'Next people you may know', exact: true }).count(), 0);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  db.eventRecords.set('1',{name:'Shared campus jazz',date:'2026-11-15'});
+  await card().locator('[data-friend-open]').click();
+  await page.getByRole('dialog',{name:'Shared connections',exact:true}).getByText('Shared campus jazz',{exact:true}).waitFor();
+  assert.equal(db.attempts.length,0,'opening a profile must not send a request');
+  await page.getByRole('button',{name:'Close shared connections',exact:true}).click();
+  assert.equal(await card().locator('[data-friend-open]').evaluate(el=>el===document.activeElement),true);
+
   await page.getByRole('button', { name: 'Load more people', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('[data-person-id]').length === 2);
-  delay = 180;
-  await action().click();
+  await page.getByText('1 shared interest', { exact: true }).waitFor();
+  delay = 180; await action().click();
   await page.waitForFunction(id => document.querySelector(`[data-person-id="${id}"] [data-friend-control="action"]`).disabled, B);
-  await page.evaluate(id => friendAction(id), B); // duplicate while the first is pending
+  await page.evaluate(id => friendAction(id), B);
   await status('outgoing_pending'); assert.equal(db.attempts.length, 1);
-  assert.equal(await action().evaluate(el => el === document.activeElement), true);
-  delay = 0;
-  await page.reload(); await status('outgoing_pending');
-  await action().click(); await status('none'); assert.equal(db.attempts[0].Status, 'cancelled');
+  await action().click(); await status('none');
   await action().click(); await status('outgoing_pending');
-  await db.rpc(B, 'respond_to_friend_request', { p_request_id: db.attempts[1].FriendRequestID, p_accept: true });
-  await page.getByRole('button', { name: 'Refresh people', exact: true }).click(); await status('friends');
-  page.once('dialog', dialog => dialog.dismiss()); await action().click(); await status('friends');
-  page.once('dialog', dialog => dialog.accept()); await action().click(); await status('none');
-  assert.deepEqual(db.attempts.map(row => row.Status), ['cancelled', 'accepted']);
-  failWrite = true;
-  await action().click();
+  assert.equal(db.attempts[0].Status,'cancelled');
+  assert.equal(db.attempts.length,2);
+  delay = 0;
+  await page.getByRole('tab', { name: 'Requests', exact: true }).click(); await status('outgoing_pending');
+  assert.equal(await action().isEnabled(), true);
+  await page.reload();
+  await page.getByRole('tab', { name: 'Requests', exact: true }).click(); await status('outgoing_pending');
+  await action().click(); await card().waitFor({ state: 'detached' });
+  assert.equal(db.attempts.at(-1).Status, 'cancelled');
+  await db.rpc(B, 'send_friend_request', { p_recipient_user_id: A });
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await status('incoming_pending');
+  await checkResponsiveFriends();
+  await card().getByRole('button', { name: 'Accept', exact: false }).click();
+  await card().waitFor({ state: 'detached' });
+  await page.getByRole('tab', { name: 'My Friends', exact: true }).click(); await status('friends');
+  page.once('dialog', dialog => dialog.dismiss()); await action().click();
+  await page.waitForFunction(id => !document.querySelector(`[data-person-id="${id}"] [data-friend-control="action"]`).disabled, B);
+  assert.equal(db.status(A, B).relationship, 'friends');
+  page.once('dialog', dialog => dialog.accept()); await action().click(); await card().waitFor({ state: 'detached' });
+  await db.rpc(B, 'send_friend_request', { p_recipient_user_id: A });
+  await page.getByRole('tab', { name: 'Requests', exact: true }).click(); await status('incoming_pending');
+  await card().getByRole('button', { name: 'Deny', exact: false }).click(); await card().waitFor({ state: 'detached' });
+  assert.equal(db.attempts.at(-1).Status, 'declined');
+  await page.getByRole('tab', { name: 'Find Friends' }).click(); await status('none');
+  await page.getByLabel('Find someone on Gather').fill('Casey');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await page.getByRole('heading', { name: 'Casey', exact: true }).waitFor();
+  assert.equal(await card().count(), 0);
+  Object.assign(db.users[1], { username: 'campus_blair', first_name: 'Jonathan', last_name: 'Thompson', email: 'blair.student@byu.edu' });
+  const searchPeople = async query => {
+    const response = page.waitForResponse(response => response.url().includes('/api/friends/people?') && response.url().includes('section=search'));
+    await page.getByLabel('Find someone on Gather').fill(query);
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
+    await response;
+    await page.getByRole('button', { name: 'Refresh', exact: true }).waitFor({ state: 'visible' });
+    await page.waitForFunction(() => !document.getElementById('friendsRefresh').disabled);
+  };
+  for (const query of ['@campus_bla', 'Jonathon', 'Thompson', 'student@byu']) {
+    await searchPeople(query); await status('none');
+    assert.equal(await card().locator('.friend-username').textContent(), '@campus_blair');
+  }
+  for (const query of ['@campus_blar', 'blar.student@byu.edu']) {
+    await searchPeople(query); assert.equal(await card().count(), 0);
+  }
+  db.users[1].is_private = true;
+  for (const query of ['Jonathan', 'student@byu']) {
+    await searchPeople(query); assert.equal(await card().count(), 0);
+  }
+  await searchPeople('@campus'); await status('none');
+  await card().getByRole('heading', { name: 'Private account', exact: true }).waitFor();
+  assert.equal(await card().locator('.friend-username').textContent(), '@campus_blair');
+  await checkResponsiveFriends();
+  db.users[1].is_private = false;
+  await searchPeople(''); await status('none');
+  failWrite = true; await action().click();
   await card().getByRole('button', { name: 'Refresh status', exact: true }).waitFor();
-  assert.equal(await action().isDisabled(), true); assert.equal(db.attempts.length, 2);
+  await checkResponsiveFriends();
+  assert.equal(await action().isDisabled(), true);
   await card().getByRole('button', { name: 'Refresh status', exact: true }).click();
   await page.waitForFunction(id => !document.querySelector(`[data-person-id="${id}"] [data-friend-control="action"]`).disabled, B);
-  await action().click(); await status('outgoing_pending');
-  account = B;
-  await action().click();
+  account = B; await action().click();
   await page.getByRole('button', { name: 'Reload page', exact: true }).waitFor();
-  assert.equal(db.attempts.at(-1).Status, 'pending');
-  await page.reload();
-  await page.locator(`[data-person-id="${A}"] [data-friend-status="incoming_pending"]`).waitFor();
-  assert.equal(await page.locator(`[data-person-id="${A}"] [data-friend-control="action"]`).isDisabled(), true);
+  account = A; await page.reload();
+  await page.getByText('Your friend list starts here.', { exact: false }).waitFor();
+  await page.getByRole('tab', { name: 'My Friends', exact: true }).focus();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(() => document.activeElement?.id === 'friends-tab-search');
+  await status('none');
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   account = null; await page.reload();
   await page.getByText('Sign in to connect with people.', { exact: false }).waitFor();
   assert.equal(await page.locator('[data-person-id]').count(), 0);
   assert.deepEqual(errors, []);
-  console.log('PASS: real people, paging, send/cancel/reload, duplicate prevention, focus, remove confirmation, retained history, failed-save recovery, stale accounts, incoming status, guest privacy, mobile.');
+  console.log('PASS: sticky send/cancel, shared connection dialog, tabs, suggested RSVPs/interests, paging, send/cancel, accept/deny, reload, duplicate prevention, remove confirmation, partial username/email search, fuzzy names, private discovery, failed-save recovery, stale accounts, keyboard, guest privacy, mobile.');
+
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

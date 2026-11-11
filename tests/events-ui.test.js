@@ -243,3 +243,18 @@ test('friends filter explains guest access and attendance load errors', async ()
   broken.run('setMode("upcoming")');
   assert.match(broken.element('results').innerHTML, /Jazz &lt;friends&gt;/);
 });
+
+
+test('view toggle updates its label in both directions and preserves filters', async () => {
+  const page = await pageFixture();
+  page.run('setFilter("q", "Jazz")');
+  assert.match(page.element('toolbar').innerHTML, /Calendar view/);
+  page.run('toggleView()');
+  assert.match(page.element('toolbar').innerHTML, /List view/);
+  assert.doesNotMatch(page.element('toolbar').innerHTML, /Calendar view/);
+  assert.match(page.element('toolbar').innerHTML, /value="Jazz"/);
+  page.run('toggleView()');
+  assert.match(page.element('toolbar').innerHTML, /Calendar view/);
+  assert.doesNotMatch(page.element('toolbar').innerHTML, /List view/);
+  assert.match(page.element('toolbar').innerHTML, /value="Jazz"/);
+});

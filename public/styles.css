@@ -858,6 +858,20 @@ input[type="checkbox"] {
   width: 100%;
   margin: 10px 0;
 }
+.drawer .drawer-close {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--card) 85%, var(--secondary));
+  border-color: color-mix(in oklch, var(--foreground) 10%, var(--border));
+  min-height: 44px;
+}
+.drawer .drawer-close:hover {
+  background: var(--card);
+  border-color: color-mix(in oklch, var(--foreground) 18%, var(--border));
+}
+.drawer .drawer-close:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
 .drawer .brand {
   margin: 30px 0;
 }
@@ -1831,4 +1845,104 @@ footer {
   flex: 0 0 42px;
   border-radius: 50%;
   object-fit: cover;
+}
+
+/* Friends directory */
+.friends-tabs { display: flex; gap: .4rem; padding: .4rem; margin: 1.5rem 0; background: var(--glass); border: 1px solid var(--border); border-radius: 1rem; width: fit-content; max-width: 100%; }
+.friends-tabs button { border: 0; background: transparent; color: var(--muted-foreground); }
+.friends-tabs [aria-selected="true"] { background: var(--primary); color: var(--primary-foreground); box-shadow: var(--nav-shadow); }
+.friends-toolbar { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+.friends-search { background: var(--glass); border: 1px solid var(--border); border-radius: 1rem; padding: 1.25rem; margin-bottom: 1.75rem; }
+.friends-search label { display: block; margin-bottom: .65rem; font-weight: 600; }
+.friends-search input { flex: 1; min-width: 0; }
+.friends-grid { margin: 1rem 0 1.75rem; }
+.friends-grid .friend { flex-wrap: wrap; align-items: flex-start; }
+.friends-grid .info { flex: 1; min-width: 120px; overflow-wrap: anywhere; }
+.friends-grid .friend-controls { width: 100%; padding-top: .75rem; border-top: 1px solid var(--border); }
+.friend-username { font-size: .8rem; line-height: 1.4; margin-top: -.25rem; }
+.friend-reasons { color: var(--primary); font-size: .8rem; font-weight: 600; margin-top: .6rem; }
+@media (max-width: 520px) {
+  .friends-tabs { width: 100%; }
+  .friends-tabs button { flex: 1; padding: .7rem .45rem; font-size: .8rem; }
+  .friends-search .row { flex-wrap: wrap; }
+  .friends-search input { flex-basis: 100%; }
+}
+
+/* Shared connection details preserve the existing friend card layout. */
+.friend-profile-name { padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: inherit; text-align: left; }
+.friend-profile-name:hover { text-decoration: underline; }
+.friend-connection-section { margin-top: 1.5rem; }
+.friend-connection-section li { margin: .65rem 0; overflow-wrap: anywhere; }
+.friend-connection-section small { display: block; color: var(--muted-foreground); }
+
+/* Compact square friend tiles. */
+.friends-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 1rem; }
+.friends-grid .friend { overflow: visible; flex-direction: column; flex-wrap: nowrap; align-items: center; text-align: center; aspect-ratio: 1; padding: 1rem; min-width: 0; gap: .5rem; }
+.friends-grid .friend .info { min-width: 0; width: 100%; flex: 1; }
+.friends-grid .friend h3 { margin: 0; font-size: 1rem; }
+.friends-grid .friend-profile-name { text-align: center; }
+.friends-grid .friend .friend-username { margin: .25rem 0; }
+.friends-grid .friend [data-friend-status="none"] { display: none; }
+.friends-grid .friend-controls { justify-content: center; flex-wrap: wrap; margin-top: auto; }
+.friends-grid .friend-controls button { padding: .5rem .75rem; }
+@media (max-width: 520px) {
+  .friends-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+  .friends-grid .friend { padding: .8rem; }
+}
+
+/* Keep friend actions usable and text contained on small screens. */
+.friends-grid .friend-profile-name,
+.friends-grid .friend-controls button { max-width: 100%; overflow-wrap: anywhere; }
+.friends-grid .friend-controls button { min-height: 44px; }
+.friend-detail-body { overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .friends-tabs { width: 100%; }
+  .friends-tabs button { flex: 1; min-width: 0; min-height: 44px; }
+  .friends-search input { font-size: 16px; min-height: 44px; }
+  .friends-search button { min-height: 44px; }
+  #friends-panel > .notice { overflow-wrap: anywhere; }
+}
+@media (max-width: 520px) {
+  .friends-search { padding: 1rem; }
+  .friends-search button { width: 100%; }
+  .friend-detail-body { padding: 3.5rem 1rem 1.5rem; }
+}
+.friends-grid .friend .info,
+.friends-grid .friend-controls { flex-shrink: 0; }
+@media (max-width: 459px) {
+  .friends-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Events search and filters use the page scroll on phones and tablets. */
+@media (max-width: 768px) {
+  .event-toolbar { top: auto; padding: 14px; }
+  .event-toolbar #eventSearchControls { max-height: none; overflow: visible; }
+  .event-toolbar #eventSearchControls > .row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+  .event-toolbar .search { grid-column: 1 / -1; width: 100%; min-width: 0; font-size: 16px; }
+  .event-toolbar button,
+  .event-toolbar select,
+  .event-toolbar input:not([type="checkbox"]),
+  .event-toolbar summary { min-height: 44px; }
+  .event-toolbar .chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .event-toolbar .chips button { padding: 10px 8px; white-space: normal; }
+  .event-toolbar .chips button:last-child { grid-column: 1 / -1; }
+  .event-toolbar .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .event-toolbar .filters > * { min-width: 0; }
+  .event-toolbar .filters select,
+  .event-toolbar .filters input:not([type="checkbox"]) { width: 100%; min-width: 0; font-size: 16px; }
+  .event-toolbar .category-dropdown summary { font-size: 16px; gap: 8px; }
+  .event-toolbar .category-dropdown .category-options { position: static; margin-top: 8px; max-height: none; box-shadow: none; }
+  .event-toolbar .category-options label,
+  .event-toolbar .filters > div > label { min-height: 44px; font-size: 14px; overflow-wrap: anywhere; }
+  .event-toolbar .filters input[type="checkbox"] { flex-shrink: 0; width: 20px; height: 20px; }
+  .event-toolbar .toolbar-collapse-row { flex-wrap: wrap; }
+  .event-toolbar .toolbar-collapse,
+  .event-toolbar .toolbar-reset { min-height: 44px; font-size: 13px; }
+}
+@media (max-width: 480px) {
+  .event-toolbar .filters { grid-template-columns: minmax(0, 1fr); }
 }
