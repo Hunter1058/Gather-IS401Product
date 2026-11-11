@@ -8,13 +8,14 @@ window.GatherFriends = {
     let section = null, search = "", suggestionVisit = 0;
     let owner, generation = 0, people = [], nextCursor = null;
     let loading = false, ready = false, error = "", accountChanged = false;
+    let suggestedIds = new Set();
     const pending = new Map(), problems = new Map(), retained = new Map();
     function sync() {
       const actual = account();
       if (actual !== owner) {
         owner = actual; generation++; people = []; nextCursor = null;
         loading = ready = accountChanged = false; error = "";
-        pending.clear(); problems.clear(); retained.clear(); search = "";
+        pending.clear(); problems.clear(); retained.clear(); suggestedIds.clear(); search = "";
       }
       return owner;
     }
@@ -40,7 +41,7 @@ window.GatherFriends = {
     }
     function view() {
       sync();
-      return { people: people.map(person => ({ ...person, pending: pending.has(person.id),
+      return { people: people.map(person => ({ ...person, suggested: suggestedIds.has(person.id), pending: pending.has(person.id),
         pendingAction: pending.get(person.id), error: problems.get(person.id) || "" })),
         loading, ready, error, accountChanged, search, hasMore: nextCursor !== null };
     }
@@ -50,7 +51,7 @@ window.GatherFriends = {
         if (pending.size || accountChanged) return;
         if (section !== filter.section || search !== (filter.search || "")) retained.clear();
         section = filter.section; search = filter.search || "";
-        generation++; loading = false; people = []; nextCursor = null;
+        generation++; loading = false; people = []; nextCursor = null; suggestedIds.clear();
       }
       const token = generation, visit = suggestionVisit;
       if (!id) { login(); return; }
@@ -60,11 +61,22 @@ window.GatherFriends = {
       const trigger = document.activeElement;
       loading = true; ready = false; error = ""; changed();
       try {
-        const result = validated(await request("/friends/people?" + (section ? "section=" + section + "&search=" + encodeURIComponent(search) + "&" : "") + (after ? "after=" + encodeURIComponent(after) : ""),
+        const discovery = section === "search" && !search;
+        const result = validated(await request("/friends/people?" + (!discovery && section ? "section=" + section + "&search=" + encodeURIComponent(search) + "&" : "") + (after ? "after=" + encodeURIComponent(after) : ""),
           { headers: { "X-Gather-Account": id } }), id);
         if (!current(id, token)) return;
         if (!Array.isArray(result.people)) throw Error("Unable to load people. Please retry.");
-        const incoming = result.people.map(validPerson);
+        const directoryPeople = result.people.map(validPerson);
+        const incoming = discovery ? directoryPeople.filter(person => person.relationship === "none" && !person.isPrivate) : directoryPeople;
+        if (discovery && !more) {
+          const suggestions = validated(await request("/friends/people?section=search&limit=24", { headers: { "X-Gather-Account": id } }), id);
+          if (!current(id, token)) return;
+          if (!Array.isArray(suggestions.people)) throw Error("Unable to load suggestions. Please retry.");
+          const rows = suggestions.people.map(validPerson);
+          suggestedIds = new Set(rows.map(person => person.id));
+          for (let index = incoming.length - 1; index >= 0; index--) if (suggestedIds.has(incoming[index].id)) incoming.splice(index, 1);
+          incoming.unshift(...rows);
+        }
         if (!more && section === "search" && !search && retained.size) {
           const restored = await Promise.all([...retained.keys()].map(async personId => {
             try {
@@ -82,7 +94,8 @@ window.GatherFriends = {
           }
         }
         if (result.nextCursor != null && result.nextCursor === after) throw Error("Unable to load the next page. Please retry.");
-        people = [...new Map([...(more ? people : []), ...incoming].map(person => [person.id, person])).values()];
+        const additions = more && discovery ? incoming.filter(person => !suggestedIds.has(person.id)) : incoming;
+        people = [...new Map([...(more ? people : []), ...additions].map(person => [person.id, person])).values()];
         nextCursor = result.nextCursor || null; ready = true;
         if (!more) problems.clear();
       } catch (failure) {

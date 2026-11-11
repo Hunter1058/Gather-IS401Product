@@ -1860,3 +1860,75 @@ footer {
 .friend-connection-section { margin-top: 1.5rem; }
 .friend-connection-section li { margin: .65rem 0; overflow-wrap: anywhere; }
 .friend-connection-section small { display: block; color: var(--muted-foreground); }
+
+/* Compact square friend tiles. */
+.friends-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 1rem; }
+.friends-grid .friend { overflow: visible; flex-direction: column; flex-wrap: nowrap; align-items: center; text-align: center; aspect-ratio: 1; padding: 1rem; min-width: 0; gap: .5rem; }
+.friends-grid .friend .info { min-width: 0; width: 100%; flex: 1; }
+.friends-grid .friend h3 { margin: 0; font-size: 1rem; }
+.friends-grid .friend-profile-name { text-align: center; }
+.friends-grid .friend .friend-username { margin: .25rem 0; }
+.friends-grid .friend [data-friend-status="none"] { display: none; }
+.friends-grid .friend-controls { justify-content: center; flex-wrap: wrap; margin-top: auto; }
+.friends-grid .friend-controls button { padding: .5rem .75rem; }
+@media (max-width: 520px) {
+  .friends-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+  .friends-grid .friend { padding: .8rem; }
+}
+
+/* Keep friend actions usable and text contained on small screens. */
+.friends-grid .friend-profile-name,
+.friends-grid .friend-controls button { max-width: 100%; overflow-wrap: anywhere; }
+.friends-grid .friend-controls button { min-height: 44px; }
+.friend-detail-body { overflow-wrap: anywhere; }
+@media (max-width: 720px) {
+  .friends-tabs { width: 100%; }
+  .friends-tabs button { flex: 1; min-width: 0; min-height: 44px; }
+  .friends-search input { font-size: 16px; min-height: 44px; }
+  .friends-search button { min-height: 44px; }
+  #friends-panel > .notice { overflow-wrap: anywhere; }
+}
+@media (max-width: 520px) {
+  .friends-search { padding: 1rem; }
+  .friends-search button { width: 100%; }
+  .friend-detail-body { padding: 3.5rem 1rem 1.5rem; }
+}
+.friends-grid .friend .info,
+.friends-grid .friend-controls { flex-shrink: 0; }
+@media (max-width: 459px) {
+  .friends-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Events search and filters use the page scroll on phones and tablets. */
+@media (max-width: 768px) {
+  .event-toolbar { top: auto; padding: 14px; }
+  .event-toolbar #eventSearchControls { max-height: none; overflow: visible; }
+  .event-toolbar #eventSearchControls > .row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+  .event-toolbar .search { grid-column: 1 / -1; width: 100%; min-width: 0; font-size: 16px; }
+  .event-toolbar button,
+  .event-toolbar select,
+  .event-toolbar input:not([type="checkbox"]),
+  .event-toolbar summary { min-height: 44px; }
+  .event-toolbar .chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .event-toolbar .chips button { padding: 10px 8px; white-space: normal; }
+  .event-toolbar .chips button:last-child { grid-column: 1 / -1; }
+  .event-toolbar .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .event-toolbar .filters > * { min-width: 0; }
+  .event-toolbar .filters select,
+  .event-toolbar .filters input:not([type="checkbox"]) { width: 100%; min-width: 0; font-size: 16px; }
+  .event-toolbar .category-dropdown summary { font-size: 16px; gap: 8px; }
+  .event-toolbar .category-dropdown .category-options { position: static; margin-top: 8px; max-height: none; box-shadow: none; }
+  .event-toolbar .category-options label,
+  .event-toolbar .filters > div > label { min-height: 44px; font-size: 14px; overflow-wrap: anywhere; }
+  .event-toolbar .filters input[type="checkbox"] { flex-shrink: 0; width: 20px; height: 20px; }
+  .event-toolbar .toolbar-collapse-row { flex-wrap: wrap; }
+  .event-toolbar .toolbar-collapse,
+  .event-toolbar .toolbar-reset { min-height: 44px; font-size: 13px; }
+}
+@media (max-width: 480px) {
+  .event-toolbar .filters { grid-template-columns: minmax(0, 1fr); }
+}

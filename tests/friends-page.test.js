@@ -36,7 +36,12 @@ async function fixture({ guest = false, eventsFail = false, stateFail = false, c
         assert(user); const client = { rpc: (name, args) => db.rpc(user.id, name, args) };
         const url = new URL(path, 'http://fixture');
         if (url.pathname.endsWith('/connections')) body = { accountId: A, ...await connections(client,A,url.pathname.split('/')[4],url.searchParams) };
-        else if (url.pathname === '/api/friends/people') body = { accountId: A, ...await people(client, url.searchParams) };
+        else if (url.pathname === '/api/friends/people') {
+          // Match servers already running before the Find Friends layout change.
+          const supported = new Set(['after', 'limit', 'personId', 'section', 'search', 'q']);
+          for (const key of url.searchParams.keys()) assert(supported.has(key), `Unsupported people query: ${key}`);
+          body = { accountId: A, ...await people(client, url.searchParams) };
+        }
         else {
           const input = JSON.parse(options.body);
           const response = /\/requests\/([^/]+)\/(accept|deny)$/.exec(path);
@@ -150,14 +155,18 @@ test('search result order stays relevant rather than regrouping by recommendatio
   assert.match(f.html(), new RegExp(`data-person-id="${B}"`));
 });
 
-test('suggestions explain shared interests and omit unrelated people while search still finds them', async () => {
+test('Find Friends separates suggested people from the directory and keeps search working', async () => {
   const f=await fixture();
   await f.run("selectFriendsTab('search')");
-  assert.match(f.html(),/No suggestions yet/); assert.doesNotMatch(f.html(),/Explore people|data-person-id=/);
+  assert.match(f.html(),/No suggestions yet/); assert.match(f.html(),/More people on Gather/); assert.match(f.html(),/Casey/);
+  assert.match(f.html(), /Find Friends/); assert.match(f.html(), /People you may know/);
   f.db.interests.set(A,new Set(['art'])); f.db.interests.set(B,new Set(['art']));
   await f.run('refreshPeople()');
   assert.match(f.html(),/1 shared interest/); assert.match(f.html(),/Blair &lt;friend&gt;/);
-  assert.doesNotMatch(f.html(),/Casey/);
+  const [suggestions, directory] = f.html().split('<h2>More people on Gather</h2>');
+  assert.match(suggestions, /id="suggestedFriends"/); assert.match(suggestions, /Blair &lt;friend&gt;/);
+  assert.doesNotMatch(suggestions, /data-person-id="33333333-3333-4333-8333-333333333333"/);
+  assert.match(directory, /Casey/); assert.doesNotMatch(directory, new RegExp(`data-person-id="${B}"`));
   await f.run("friendsSearch='Casey'; refreshPeople()");
   assert.match(f.html(),/Casey/);
 });

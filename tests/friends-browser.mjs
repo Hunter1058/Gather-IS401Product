@@ -48,7 +48,7 @@ try {
           payload={accountId:account,...await connections(client,account,path.split('/')[4],url.searchParams)};
         } else if (path === '/api/friends/people') {
           // One-row pages intentionally exercise Load more with the small fixture.
-          if (!url.searchParams.has('personId')) url.searchParams.set('limit', '1');
+          if (!url.searchParams.has('personId') && !url.searchParams.has('limit')) url.searchParams.set('limit', '1');
           payload = { accountId: account, ...await people(client, url.searchParams) };
         } else {
           if (delay) await new Promise(resolve => setTimeout(resolve, delay));
@@ -67,6 +67,25 @@ try {
   const page = await context.newPage(), errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const base = `http://127.0.0.1:${server.address().port}`;
+  const checkResponsiveFriends = async () => {
+    for (const width of [320, 360, 390, 520, 768, 1024]) {
+      await page.setViewportSize({ width, height: 844 });
+      const issues = await page.evaluate(() => {
+        const issues = [];
+        if (document.documentElement.scrollWidth > innerWidth) issues.push('page overflows');
+        for (const card of document.querySelectorAll('.friends-grid .friend')) {
+          if (card.scrollWidth > card.clientWidth + 1 || card.scrollHeight > card.clientHeight + 1) issues.push('card content clipped');
+          for (const button of card.querySelectorAll('.friend-controls button')) {
+            const bounds = button.getBoundingClientRect(), parent = card.getBoundingClientRect();
+            if (bounds.height < 44 || bounds.left < parent.left || bounds.right > parent.right) issues.push('action too small or outside card');
+          }
+        }
+        return issues;
+      });
+      assert.deepEqual(issues, [], `Friends layout at ${width}px`);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+  };
   const card = () => page.locator(`[data-person-id="${B}"]`);
   const action = () => card().locator('[data-friend-control="action"]');
   const status = expected => page.waitForFunction(({ id, expected }) =>
@@ -76,9 +95,19 @@ try {
   await page.getByRole('button', { name: 'Friends', exact: true }).first().click();
   await page.waitForURL(base + '/#friends');
   await page.getByText('Your friend list starts here.', { exact: false }).waitFor();
-  await page.getByRole('tab', { name: 'Search Friends' }).click(); await status('none');
+  await page.getByRole('tab', { name: 'Find Friends' }).click(); await status('none');
   await page.getByText('1 shared RSVP', { exact: true }).waitFor();
-  assert.equal(await page.locator('[data-person-id]').count(), 1);
+  assert.equal(await page.locator('[data-person-id]').count(), 2);
+  assert.equal(await page.locator('#suggestedFriends [data-person-id]').count(), 2);
+  await checkResponsiveFriends();
+  const tile = await card().boundingBox();
+  assert(Math.abs(tile.width - tile.height) < 2, 'suggested friend tiles should be square');
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileTile = await card().boundingBox();
+  assert(Math.abs(mobileTile.width - mobileTile.height) < 2, 'mobile friend tiles should stay square');
+  assert.equal(await page.getByRole('button', { name: 'Next people you may know', exact: true }).count(), 0);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.setViewportSize({ width: 1280, height: 900 });
   db.eventRecords.set('1',{name:'Shared campus jazz',date:'2026-11-15'});
   await card().locator('[data-friend-open]').click();
   await page.getByRole('dialog',{name:'Shared connections',exact:true}).getByText('Shared campus jazz',{exact:true}).waitFor();
@@ -106,6 +135,7 @@ try {
   assert.equal(db.attempts.at(-1).Status, 'cancelled');
   await db.rpc(B, 'send_friend_request', { p_recipient_user_id: A });
   await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await status('incoming_pending');
+  await checkResponsiveFriends();
   await card().getByRole('button', { name: 'Accept', exact: false }).click();
   await card().waitFor({ state: 'detached' });
   await page.getByRole('tab', { name: 'My Friends', exact: true }).click(); await status('friends');
@@ -117,7 +147,7 @@ try {
   await page.getByRole('tab', { name: 'Requests', exact: true }).click(); await status('incoming_pending');
   await card().getByRole('button', { name: 'Deny', exact: false }).click(); await card().waitFor({ state: 'detached' });
   assert.equal(db.attempts.at(-1).Status, 'declined');
-  await page.getByRole('tab', { name: 'Search Friends' }).click(); await status('none');
+  await page.getByRole('tab', { name: 'Find Friends' }).click(); await status('none');
   await page.getByLabel('Find someone on Gather').fill('Casey');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await page.getByRole('heading', { name: 'Casey', exact: true }).waitFor();
@@ -145,10 +175,12 @@ try {
   await searchPeople('@campus'); await status('none');
   await card().getByRole('heading', { name: 'Private account', exact: true }).waitFor();
   assert.equal(await card().locator('.friend-username').textContent(), '@campus_blair');
+  await checkResponsiveFriends();
   db.users[1].is_private = false;
   await searchPeople(''); await status('none');
   failWrite = true; await action().click();
   await card().getByRole('button', { name: 'Refresh status', exact: true }).waitFor();
+  await checkResponsiveFriends();
   assert.equal(await action().isDisabled(), true);
   await card().getByRole('button', { name: 'Refresh status', exact: true }).click();
   await page.waitForFunction(id => !document.querySelector(`[data-person-id="${id}"] [data-friend-control="action"]`).disabled, B);
