@@ -247,7 +247,14 @@ if (route === "/categories" && req.method === "GET") {
       // Restore an account from the browser session on page refresh.
       if (route === "/auth/session" && req.method === "GET") {
         const session = await sessionCookies.restore(req, res);
-        return json(res, 200, { user: userView(session?.user) });
+        const user = userView(session?.user);
+        if (user) {
+          const profile = await session.client.from("User")
+            .select("UserProfilePhoto").eq("UserID", user.id).maybeSingle();
+          if (!profile.error && profile.data?.UserProfilePhoto)
+            user.photoUrl = profile.data.UserProfilePhoto;
+        }
+        return json(res, 200, { user });
       }
 
       if (route === "/settings" && ["GET", "PUT"].includes(req.method)) {

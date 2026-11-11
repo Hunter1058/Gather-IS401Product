@@ -1218,6 +1218,8 @@ footer {
 
 /* Profile avatar for signed-in users */
 .profile-avatar {
+  position: relative;
+  overflow: hidden;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -1230,6 +1232,14 @@ footer {
   font-size: 14px;
   text-decoration: none;
   cursor: pointer;
+}
+
+.profile-avatar-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* Friendly confirmation message after successful signup */
@@ -1847,6 +1857,30 @@ footer {
   object-fit: cover;
 }
 
+.auth .delete-account > summary {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 10px;
+  padding: 0.65rem 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--destructive);
+  font-weight: 600;
+  text-align: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.auth .delete-account > summary::-webkit-details-marker {
+  display: none;
+}
+
+.auth .delete-account > summary:hover {
+  background: var(--hover);
+  box-shadow: var(--nav-shadow);
+}
 /* Friends directory */
 .friends-tabs { display: flex; gap: .4rem; padding: .4rem; margin: 1.5rem 0; background: var(--glass); border: 1px solid var(--border); border-radius: 1rem; width: fit-content; max-width: 100%; }
 .friends-tabs button { border: 0; background: transparent; color: var(--muted-foreground); }

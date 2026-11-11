@@ -145,7 +145,7 @@ function go(p) {
     friendActions.discardSuggestions();
     if (friendDetail) closeModal();
   }
-  if (p === "login" || p === "signup") {
+  if (p === "login" || p === "signup" || p === "settings") {
     location.assign("/" + p);
     return;
   }
@@ -742,18 +742,12 @@ function renderBase() {
     )
     .join("");
   $("sideNav").innerHTML = [
-    ...links,
-    ["login", data.user ? "Account" : "Sign in"],
+    [data.user ? "settings" : "login", data.user ? "Account" : "Sign in"],
   ]
     .map(([p, n]) => `<button onclick="go('${p}')">${n}</button>`)
     .join("");
 
     const userButton = $("userButton");
-      globalThis.accountMenu?.update(data.user, async () => {
-        if (backendMode === "supabase") await api("/auth/logout", { method: "POST", body: "{}" });
-        else { data.user = null; persistDemo(); }
-        location.assign("/");
-      });
 
     if (data.user) {
       const initials = (data.user.name || data.user.email || "U")
@@ -771,6 +765,17 @@ function renderBase() {
       userButton.textContent = "Sign in ↗";
       userButton.classList.remove("profile-avatar");
     }
+    
+    globalThis.accountMenu?.update(data.user, async () => {
+      if (backendMode === "supabase") {
+        await api("/auth/logout", { method: "POST", body: "{}" });
+      } else {
+        data.user = null;
+        persistDemo();
+      }
+    
+      location.assign("/");
+    });
 
   $("app").innerHTML =
     page === "home"

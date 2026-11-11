@@ -101,7 +101,19 @@ globalThis.accountMenu = (() => {
   });
 
   return {
-    update(currentUser, logout) {
+    update(currentUser, logout, photoUrl = currentUser?.photoUrl) {
+      const sideLink = document.getElementById("sideUserButton");
+      if (sideLink) sideLink.href = currentUser ? "/settings" : "/login";
+
+      if (currentUser && typeof photoUrl === "string" &&
+          /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(photoUrl.trim())) {
+        const photo = document.createElement("img");
+        photo.className = "profile-avatar-photo";
+        photo.alt = "";
+        photo.addEventListener("error", () => photo.remove(), { once: true });
+        photo.src = photoUrl.trim();
+        trigger.append(photo);
+      }
       if (user !== currentUser) setOpen(false);
       const previousId = user?.id;
       user = currentUser;
