@@ -5,16 +5,16 @@
 "use strict";
 window.GatherFriends = {
   create({ request, account, changed, notify, login, confirmRemove = () => true }) {
-    let section = null, search = "";
+    let section = null, search = "", suggestionVisit = 0;
     let owner, generation = 0, people = [], nextCursor = null;
     let loading = false, ready = false, error = "", accountChanged = false;
-    const pending = new Map(), problems = new Map();
+    const pending = new Map(), problems = new Map(), retained = new Map();
     function sync() {
       const actual = account();
       if (actual !== owner) {
         owner = actual; generation++; people = []; nextCursor = null;
         loading = ready = accountChanged = false; error = "";
-        pending.clear(); problems.clear(); search = "";
+        pending.clear(); problems.clear(); retained.clear(); search = "";
       }
       return owner;
     }
@@ -48,10 +48,11 @@ window.GatherFriends = {
       const id = sync();
       if (filter) {
         if (pending.size || accountChanged) return;
+        if (section !== filter.section || search !== (filter.search || "")) retained.clear();
         section = filter.section; search = filter.search || "";
         generation++; loading = false; people = []; nextCursor = null;
       }
-      const token = generation;
+      const token = generation, visit = suggestionVisit;
       if (!id) { login(); return; }
       if (loading || pending.size || accountChanged) return;
       if (more && (!ready || !nextCursor)) return;
@@ -64,6 +65,22 @@ window.GatherFriends = {
         if (!current(id, token)) return;
         if (!Array.isArray(result.people)) throw Error("Unable to load people. Please retry.");
         const incoming = result.people.map(validPerson);
+        if (!more && section === "search" && !search && retained.size) {
+          const restored = await Promise.all([...retained.keys()].map(async personId => {
+            try {
+              const response=validated(await request("/friends/people?personId="+encodeURIComponent(personId),
+                {headers:{"X-Gather-Account":id}}),id);
+              const person=validPerson(response.people?.[0]);
+              if (person.id!==personId) throw Error("Unable to confirm this person's status.");
+              return person;
+            } catch (failure) { if (failure.status===404) return null; throw failure; }
+          }));
+          if (!current(id,token)) return;
+          if (visit === suggestionVisit) {
+            retained.clear(); restored.filter(Boolean).forEach(person=>retained.set(person.id,person));
+            for (const person of restored.filter(Boolean)) if (!incoming.some(row=>row.id===person.id)) incoming.push(person);
+          }
+        }
         if (result.nextCursor != null && result.nextCursor === after) throw Error("Unable to load the next page. Please retry.");
         people = [...new Map([...(more ? people : []), ...incoming].map(person => [person.id, person])).values()];
         nextCursor = result.nextCursor || null; ready = true;
@@ -82,7 +99,7 @@ window.GatherFriends = {
     }
     function inSection(person) {
       return !section || (section === "friends" ? person.relationship === "friends"
-        : section === "requests" ? person.relationship.endsWith("_pending") : Boolean(search) || person.relationship === "none");
+        : section === "requests" ? person.relationship.endsWith("_pending") : true);
     }
     function restoreFocus(id, trigger) {
       if (trigger?.dataset?.friendUserId !== id) return;
@@ -92,7 +109,7 @@ window.GatherFriends = {
         || document.getElementById("friendsRefresh"))?.focus();
     }
     async function refreshPerson(personId) {
-      const id = sync(), token = generation;
+      const id = sync(), token = generation, visit = suggestionVisit;
       if (!id || loading || pending.has(personId) || accountChanged) return;
       const trigger = document.activeElement;
       pending.set(personId, "refresh"); changed();
@@ -102,6 +119,7 @@ window.GatherFriends = {
         if (!current(id, token)) return;
         const person = validPerson(result.people?.[0]);
         if (person.id !== personId) throw Error("Unable to confirm this person's status.");
+        if (section === "search" && !search && visit === suggestionVisit) retained.set(personId,person);
         people = people.map(previous => previous.id === personId ? person : previous).filter(inSection);
         problems.delete(personId);
       } catch (failure) {
@@ -114,7 +132,7 @@ window.GatherFriends = {
       }
     }
     async function act(personId, decision = null) {
-      const id = sync(), token = generation;
+      const id = sync(), token = generation, visit = suggestionVisit;
       if (!id) { login(); return; }
       if (!ready || loading || accountChanged || pending.has(personId) || problems.has(personId)) return;
       const person = people.find(person => person.id === personId);
@@ -137,6 +155,7 @@ window.GatherFriends = {
         if (!current(id, token)) return;
         const confirmed = validPerson(result.person);
         if (confirmed.id !== personId) throw Error("Unable to confirm this person's status.");
+        if (section === "search" && !search && visit === suggestionVisit) retained.set(personId,confirmed);
         people = people.map(previous => previous.id === personId ? confirmed : previous).filter(inSection);
         problems.delete(personId);
         const expected = { send: "outgoing_pending", cancel: "none", remove: "none", accept: "friends", deny: "none" };
@@ -150,6 +169,6 @@ window.GatherFriends = {
         if (current(id, token)) { pending.delete(personId); changed(); restoreFocus(personId, trigger); }
       }
     }
-    return { view, load, act, refreshPerson, hasPending: () => pending.size > 0 };
+    return { view, load, act, refreshPerson, discardSuggestions: () => { retained.clear(); suggestionVisit++; }, hasPending: () => pending.size > 0 };
   },
 };

@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, extname } from 'node:path';
 import { createRequire } from 'node:module';
-import { people, sendRequest, cancelRequest, removeFriend, respondRequest } from '../lib/friends.js';
+import { people, sendRequest, cancelRequest, removeFriend, respondRequest, connections } from '../lib/friends.js';
 import { friendDatabase, A, B } from './helpers/friend-rpc.js';
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE_PATH || '@playwright/test');
@@ -28,7 +28,9 @@ try {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.route('https://fonts.googleapis.com/**', route => route.abort());
-  const db = friendDatabase(); let account = A, delay = 0, failWrite = false;
+  const db = friendDatabase();
+  db.interests.set(A, new Set(['1'])); db.interests.set(db.users[2].user_id, new Set(['1']));
+  let account = A, delay = 0, failWrite = false;
   await context.route('**/api/**', async route => {
     const req = route.request(), url = new URL(req.url()); let status = 200, payload;
     try {
@@ -42,7 +44,9 @@ try {
         if (req.headers()['x-gather-account'] !== account)
           throw Object.assign(Error('Your account changed. Reload the page.'), { status: 409, code: 'ACCOUNT_CHANGED' });
         const client = { rpc: (name, args) => db.rpc(account, name, args) };
-        if (path === '/api/friends/people') {
+        if (path.endsWith('/connections')) {
+          payload={accountId:account,...await connections(client,account,path.split('/')[4],url.searchParams)};
+        } else if (path === '/api/friends/people') {
           // One-row pages intentionally exercise Load more with the small fixture.
           if (!url.searchParams.has('personId')) url.searchParams.set('limit', '1');
           payload = { accountId: account, ...await people(client, url.searchParams) };
@@ -67,7 +71,7 @@ try {
   const action = () => card().locator('[data-friend-control="action"]');
   const status = expected => page.waitForFunction(({ id, expected }) =>
     document.querySelector(`[data-person-id="${id}"] [data-friend-status]`)?.dataset.friendStatus === expected, { id: B, expected });
-  db.rsvps.set(A, new Set(['event-1'])); db.rsvps.set(B, new Set(['event-1']));
+  db.rsvps.set(A, new Set(['1'])); db.rsvps.set(B, new Set(['1']));
   await page.goto(base + '/');
   await page.getByRole('button', { name: 'Friends', exact: true }).first().click();
   await page.waitForURL(base + '/#friends');
@@ -75,19 +79,31 @@ try {
   await page.getByRole('tab', { name: 'Search Friends' }).click(); await status('none');
   await page.getByText('1 shared RSVP', { exact: true }).waitFor();
   assert.equal(await page.locator('[data-person-id]').count(), 1);
+  db.eventRecords.set('1',{name:'Shared campus jazz',date:'2026-11-15'});
+  await card().locator('[data-friend-open]').click();
+  await page.getByRole('dialog',{name:'Shared connections',exact:true}).getByText('Shared campus jazz',{exact:true}).waitFor();
+  assert.equal(db.attempts.length,0,'opening a profile must not send a request');
+  await page.getByRole('button',{name:'Close shared connections',exact:true}).click();
+  assert.equal(await card().locator('[data-friend-open]').evaluate(el=>el===document.activeElement),true);
+
   await page.getByRole('button', { name: 'Load more people', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('[data-person-id]').length === 2);
+  await page.getByText('1 shared interest', { exact: true }).waitFor();
   delay = 180; await action().click();
   await page.waitForFunction(id => document.querySelector(`[data-person-id="${id}"] [data-friend-control="action"]`).disabled, B);
   await page.evaluate(id => friendAction(id), B);
-  await card().waitFor({ state: 'detached' }); assert.equal(db.attempts.length, 1);
+  await status('outgoing_pending'); assert.equal(db.attempts.length, 1);
+  await action().click(); await status('none');
+  await action().click(); await status('outgoing_pending');
+  assert.equal(db.attempts[0].Status,'cancelled');
+  assert.equal(db.attempts.length,2);
   delay = 0;
   await page.getByRole('tab', { name: 'Requests', exact: true }).click(); await status('outgoing_pending');
   assert.equal(await action().isEnabled(), true);
   await page.reload();
   await page.getByRole('tab', { name: 'Requests', exact: true }).click(); await status('outgoing_pending');
   await action().click(); await card().waitFor({ state: 'detached' });
-  assert.equal(db.attempts[0].Status, 'cancelled');
+  assert.equal(db.attempts.at(-1).Status, 'cancelled');
   await db.rpc(B, 'send_friend_request', { p_recipient_user_id: A });
   await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await status('incoming_pending');
   await card().getByRole('button', { name: 'Accept', exact: false }).click();
@@ -150,7 +166,7 @@ try {
   await page.getByText('Sign in to connect with people.', { exact: false }).waitFor();
   assert.equal(await page.locator('[data-person-id]').count(), 0);
   assert.deepEqual(errors, []);
-  console.log('PASS: tabs, suggested RSVPs, paging, send/cancel, accept/deny, reload, duplicate prevention, remove confirmation, partial username/email search, fuzzy names, private discovery, failed-save recovery, stale accounts, keyboard, guest privacy, mobile.');
+  console.log('PASS: sticky send/cancel, shared connection dialog, tabs, suggested RSVPs/interests, paging, send/cancel, accept/deny, reload, duplicate prevention, remove confirmation, partial username/email search, fuzzy names, private discovery, failed-save recovery, stale accounts, keyboard, guest privacy, mobile.');
 
 } finally {
   if (browser) await browser.close();

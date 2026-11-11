@@ -71,8 +71,18 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
     assert.deepEqual(deletions, [{ id: C, soft: false }]);
     const listing = await call('/people?limit=1', a, A); assert.equal(listing.status, 200);
     const page = await listing.json(); assert.equal(page.accountId, A); assert.equal(page.nextCursor, B);
-    assert.deepEqual(Object.keys(page.people[0]).sort(), ['id', 'isPrivate', 'mutualFriends', 'name', 'photoUrl', 'relationship', 'requestId', 'sharedEvents', 'username']);
+    assert.deepEqual(Object.keys(page.people[0]).sort(), ['connectionDegree', 'id', 'isPrivate', 'mutualFriends', 'name', 'photoUrl', 'relationship', 'requestId', 'sharedEvents', 'sharedInterests', 'username']);
     assert(!JSON.stringify(page).includes('private-target')); assert(!JSON.stringify(page).includes('do-not-expose'));
+    db.interests.set(A,new Set(['arts'])); db.interests.set(B,new Set(['arts']));
+    const recommendations = await call('/people?section=search&search=',a,A);
+    assert.equal(recommendations.status,200);
+    const suggested = await recommendations.json();
+    assert.deepEqual(suggested.people.map(p=>p.id),[B]);
+    assert.equal(suggested.people[0].sharedInterests,1);
+    assert.equal(db.calls.at(-1).name,'get_friend_recommendations');
+    db.errors.set('get_friend_recommendations','PGRST202');
+    assert.equal((await call('/people?section=search',a,A)).status,503);
+    db.errors.clear();
     assert.equal((await call('/people?limit=51', a, A)).status, 400);
     assert.equal((await call('/requests', a, null, 'POST', { recipientId: B })).status, 409);
     assert.equal((await call('/requests', a, B, 'POST', { recipientId: B })).status, 409);
@@ -135,6 +145,18 @@ test('friend HTTP endpoints authenticate, validate actors, persist transitions a
     db.errors.set('send_friend_request', 'XX000');
     assert.equal((await call('/requests', a, A, 'POST', { recipientId: C })).status, 503);
     assert.equal(db.attempts.length, 3, 'a failed write never creates a local success');
+    db.errors.clear();db.users[1].is_private=false;
+    db.rsvps.set(A,new Set(['1']));db.rsvps.set(B,new Set(['1','2']));
+    db.eventRecords.set('1',{name:'Shared jazz',date:'2026-11-15',location:'Music Building'});
+    assert.equal((await call('/people/'+B+'/connections?kind=events')).status,401);
+    assert.equal((await call('/people/'+B+'/connections?kind=events',a,B)).status,409);
+    assert.equal((await call('/people/'+B+'/connections?kind=unknown',a,A)).status,400);
+    const shared=await call('/people/'+B+'/connections?kind=events',a,A);
+    assert.equal(shared.status,200);assert.deepEqual((await shared.json()).items.map(e=>e.id),['1']);
+    db.users[1].is_private=true;
+    const hidden=await call('/people/'+B+'/connections?kind=events',a,A);
+    assert.equal(hidden.status,200);assert.deepEqual((await hidden.json()).items,[]);
+
   } finally {
     await new Promise(resolve => server.close(resolve)); hooks.deregister(); delete globalThis.__friendClientFactory;
   }

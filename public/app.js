@@ -120,6 +120,10 @@ function toggleMenu() {
   $("menuButton").setAttribute("aria-expanded", String(open));
 }
 function go(p) {
+  if (page === "friends" && p !== "friends") {
+    friendActions.discardSuggestions();
+    if (friendDetail) closeModal();
+  }
   if (p === "login" || p === "signup") {
     location.assign("/" + p);
     return;
@@ -470,9 +474,15 @@ function openEvent(id) {
   );
 }
 function closeModal() {
+  const target = friendDetail?.id;
+  friendDetail = null; friendDetailToken++;
   $("modal").close();
   detailId = null;
+  if (target) document.querySelector(`[data-friend-open="${target}"]`)?.focus();
 }
+$("modal").addEventListener("cancel", e => {
+  if (friendDetail) { e.preventDefault(); closeModal(); }
+});
 $("modal").addEventListener("click", (e) => {
   if (e.target === $("modal")) {
     let r = $("modal").getBoundingClientRect();
@@ -555,6 +565,7 @@ function saveSurvey(ev, id) {
 }
 
 let friendsTab = "friends", friendsSearch = "";
+let friendDetail = null, friendDetailToken = 0;
 function friendCard(person, state) {
   const displayName = person.isPrivate ? "Private account" : person.name;
   const labels = { none: "Add friend", outgoing_pending: "Cancel request", friends: "Remove friend", incoming_pending: "Accept" };
@@ -565,8 +576,8 @@ function friendCard(person, state) {
   const photo = person.isPrivate === false && /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(person.photoUrl || "") ? person.photoUrl : null;
   const avatar = photo ? `<img class="friend-photo" src="${esc(photo)}" alt="" loading="lazy">`
     : `<span class="avatar" aria-hidden="true">${person.isPrivate ? icon("user") : esc(initials)}</span>`;
-  const reasons = [person.sharedEvents > 0 ? `${person.sharedEvents} shared RSVP${person.sharedEvents === 1 ? "" : "s"}` : "", person.mutualFriends > 0 ? `${person.mutualFriends} mutual friend${person.mutualFriends === 1 ? "" : "s"}` : ""].filter(Boolean);
-  return `<article class="card friend" data-person-id="${person.id}">${avatar}<div class="info"><h3 tabindex="-1" data-friend-heading="${person.id}">${esc(displayName)}</h3>${person.username ? `<p class="muted friend-username">@${esc(person.username)}</p>` : ""}<p class="muted" data-friend-status="${person.relationship}" role="status">${descriptions[person.relationship]}</p>${reasons.length ? `<p class="friend-reasons">${esc(reasons.join(" · "))}</p>` : ""}${person.error ? `<p class="error" role="alert">${esc(person.error)}</p>` : ""}</div><div class="friend-controls row"><button type="button" class="${["none", "incoming_pending"].includes(person.relationship) ? "primary" : ""}" data-friend-user-id="${person.id}" data-friend-control="action" aria-label="${esc(label + " — " + person.name)}" aria-busy="${person.pending}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}'${person.relationship === "incoming_pending" ? ", 'accept'" : ""})">${esc(label)}</button>${person.relationship === "incoming_pending" ? `<button type="button" data-friend-user-id="${person.id}" aria-label="Deny — ${esc(person.name)}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}', 'deny')">Deny</button>` : ""}${person.error ? `<button type="button" data-friend-user-id="${person.id}" data-friend-control="refresh" ${person.pending || state.accountChanged ? "disabled" : ""} onclick="refreshFriend('${person.id}')">Refresh status</button>` : ""}</div></article>`;
+  const reasons = [person.connectionDegree === 2 ? "Friend of a friend" : person.connectionDegree === 3 ? "3rd-degree connection" : "", person.sharedEvents > 0 ? `${person.sharedEvents} shared RSVP${person.sharedEvents === 1 ? "" : "s"}` : "", person.mutualFriends > 0 ? `${person.mutualFriends} mutual friend${person.mutualFriends === 1 ? "" : "s"}` : "", person.sharedInterests > 0 ? `${person.sharedInterests} shared interest${person.sharedInterests === 1 ? "" : "s"}` : ""].filter(Boolean);
+  return `<article class="card friend" data-person-id="${person.id}" onclick="activateFriendCard(event,'${person.id}')">${avatar}<div class="info"><h3 tabindex="-1" aria-label="${esc(displayName)}" data-friend-heading="${person.id}"><button type="button" class="friend-profile-name" data-friend-open="${person.id}" onclick="openFriend('${person.id}')" aria-label="View shared connections with ${esc(person.name)}">${esc(displayName)}</button></h3>${person.username ? `<p class="muted friend-username">@${esc(person.username)}</p>` : ""}<p class="muted" data-friend-status="${person.relationship}" role="status">${descriptions[person.relationship]}</p>${reasons.length ? `<p class="friend-reasons">${esc(reasons.join(" · "))}</p>` : ""}${person.error ? `<p class="error" role="alert">${esc(person.error)}</p>` : ""}</div><div class="friend-controls row"><button type="button" class="${["none", "incoming_pending"].includes(person.relationship) ? "primary" : ""}" data-friend-user-id="${person.id}" data-friend-control="action" aria-label="${esc(label + " — " + person.name)}" aria-busy="${person.pending}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}'${person.relationship === "incoming_pending" ? ", 'accept'" : ""})">${esc(label)}</button>${person.relationship === "incoming_pending" ? `<button type="button" data-friend-user-id="${person.id}" aria-label="Deny — ${esc(person.name)}" ${disabled ? "disabled" : ""} onclick="friendAction('${person.id}', 'deny')">Deny</button>` : ""}${person.error ? `<button type="button" data-friend-user-id="${person.id}" data-friend-control="refresh" ${person.pending || state.accountChanged ? "disabled" : ""} onclick="refreshFriend('${person.id}')">Refresh status</button>` : ""}</div></article>`;
 }
 function friendsPage() {
   const heading = '<div class="eyebrow">Better with company</div><h1>Your people.</h1><p class="muted">Find familiar faces. Make new plans together.</p>';
@@ -579,20 +590,85 @@ function friendsPage() {
   const cards = people => `<div class="grid friends-grid">${people.map(person => friendCard(person, state)).join("")}</div>`;
   let content = "";
   if (friendsTab === "search") {
-    const suggested = friendsSearch ? state.people : state.people.filter(p => p.sharedEvents > 0 || p.mutualFriends > 0);
-    const others = friendsSearch ? [] : state.people.filter(p => !(p.sharedEvents > 0 || p.mutualFriends > 0));
-    content = `<form class="friends-search" onsubmit="searchFriends(event)"><label for="friendsSearch">Find someone on Gather</label><div class="row"><input id="friendsSearch" name="search" type="search" maxlength="254" placeholder="Username, public name, or email" aria-describedby="friendsSearchHelp" value="${esc(friendsSearch)}"><button class="primary" type="submit" ${friendActions.hasPending() ? "disabled" : ""}>Search</button></div></form><p id="friendsSearchHelp" class="muted">Search partial usernames or emails, or first and last names with close spellings. Private profiles can be found by username only. You can start usernames with @.</p><h2>${friendsSearch ? "Search results" : "Suggested friends"}</h2><p class="muted">${friendsSearch ? "Username matches appear first, followed by names, then emails." : "People who RSVP’d to the same events or know your friends appear first."}</p>`;
+    const suggested = state.people;
+    content = `<form class="friends-search" onsubmit="searchFriends(event)"><label for="friendsSearch">Find someone on Gather</label><div class="row"><input id="friendsSearch" name="search" type="search" maxlength="254" placeholder="Username, public name, or email" aria-describedby="friendsSearchHelp" value="${esc(friendsSearch)}"><button class="primary" type="submit" ${friendActions.hasPending() ? "disabled" : ""}>Search</button></div></form><p id="friendsSearchHelp" class="muted">Search partial usernames or emails, or first and last names with close spellings. Private profiles can be found by username only. You can start usernames with @.</p><h2>${friendsSearch ? "Search results" : "Suggested friends"}</h2><p class="muted">${friendsSearch ? "Username matches appear first, followed by names, then emails." : "Closer connections appear first, followed by shared RSVPs, then shared event interests."}</p>`;
     if (suggested.length) content += cards(suggested);
-    if (others.length) content += `<h2>Explore people</h2>` + cards(others);
   } else if (friendsTab === "requests") {
     const incoming = state.people.filter(p => p.relationship === "incoming_pending"), outgoing = state.people.filter(p => p.relationship === "outgoing_pending");
     content = `<h2>Friend requests</h2><p class="muted">A new connection starts here.</p>` + (incoming.length ? cards(incoming) : state.ready ? '<div class="empty">No incoming requests right now.</div>' : '')
       + (outgoing.length ? '<h2>Sent requests</h2>' + cards(outgoing) : '');
   } else content = '<h2>My Friends</h2><p class="muted">Your crew for whatever’s next.</p>' + cards(state.people);
-  if (state.ready && !state.people.length && friendsTab !== "requests") content += `<div class="empty">${friendsTab === "friends" ? 'Your friend list starts here. Visit Search Friends to find your people.' : friendsSearch ? 'No people match your search. Try another name.' : 'No new people to add right now. Check back soon.'}</div>`;
+  if (state.ready && !state.people.length && friendsTab !== "requests") content += `<div class="empty">${friendsTab === "friends" ? 'Your friend list starts here. Visit Search Friends to find your people.' : friendsSearch ? 'No people match your search. Try another name.' : 'No suggestions yet. Add friends or select event interests in your profile, or search for someone.'}</div>`;
   return heading + tabs + `<section id="friends-panel" role="tabpanel" aria-labelledby="friends-tab-${friendsTab}" tabindex="0"><div class="friends-toolbar"><button type="button" id="friendsRefresh" onclick="refreshPeople()" ${state.loading || friendActions.hasPending() || state.accountChanged ? "disabled" : ""}>Refresh</button></div>` + notice
     + (state.loading || (!state.ready && !state.error) ? '<p role="status">Loading people…</p>' : '') + content
     + (state.hasMore ? `<button type="button" id="friendsMore" onclick="loadMorePeople()" ${state.loading || !state.ready || friendActions.hasPending() ? "disabled" : ""}>Load more people</button>` : '') + '</section>';
+}
+function activateFriendCard(event, id) {
+  if (event.target.closest("button,a,input,select,textarea,summary")) return;
+  void openFriend(id);
+}
+function renderFriendDetails() {
+  const state = friendDetail;
+  if (!state) return;
+  const person = state.person;
+  const name = person ? person.isPrivate ? "Private account" : person.name : "Shared connections";
+  let content = state.error ? `<p class="error" role="alert">${esc(state.error)}</p><button type="button" onclick="openFriend('${state.id}')">Retry</button>`
+    : !person ? '<p role="status">Loading shared connections…</p>'
+    : person.isPrivate ? '<p>This profile is private. Shared connections, events and interests are hidden.</p>'
+    : [ ["friends","Mutual friends"], ["events","Events you both RSVP’d to"], ["interests","Shared event interests"] ].map(([kind,title]) => {
+      const list=state.lists[kind];
+      return `<section class="friend-connection-section"><h3>${title}</h3>`
+        + (list.items.length ? `<ul>${list.items.map(item => `<li>${kind === "events" ? `<a href="/events?event=${encodeURIComponent(item.id)}">${esc(item.name)}</a>${item.date ? ` <span class="muted">${esc(item.date)}</span>` : ""}${item.location ? `<small>${esc(item.location)}</small>` : ""}` : `${esc(item.name)}${kind === "friends" && item.username ? `<small>@${esc(item.username)}</small>` : ""}`}</li>`).join("")}</ul>` : '<p class="muted">No shared items to show.</p>')
+        + (list.error ? `<p class="error" role="alert">${esc(list.error)}</p>` : "")
+        + (list.nextCursor ? `<button type="button" data-friend-more="${kind}" ${list.loading ? "disabled" : ""} onclick="moreFriendConnections('${kind}')">${list.loading ? "Loading…" : "Load more"}</button>` : "") + '</section>';
+    }).join("");
+  showModal(`<button type="button" class="close" aria-label="Close shared connections" onclick="closeModal()">✕</button><div class="dialog-body friend-detail-body"><h2 tabindex="-1" id="friendDetailTitle">${esc(name)}</h2>${person?.username ? `<p class="muted friend-username">@${esc(person.username)}</p>` : ""}${content}</div>`, "Shared connections");
+  document.getElementById("friendDetailTitle")?.focus();
+}
+async function openFriend(id) {
+  if (!data.user) { go("login"); return; }
+  const owner=data.user.id, token=++friendDetailToken;
+  detailId=null; friendDetail={id,person:null,lists:{},error:""}; renderFriendDetails();
+  try {
+    const result=await Promise.all(["friends","events","interests"].map(kind =>
+      api(`/friends/people/${encodeURIComponent(id)}/connections?kind=${kind}`,{headers:{"X-Gather-Account":owner}})));
+    if (token!==friendDetailToken || data.user?.id!==owner || page!=="friends") return;
+    if (result.some(row=>row.accountId!==owner || row.person?.id!==id)) throw Error("Your account changed. Reload the page.");
+    const privateResult=result.find(row=>row.person.isPrivate);
+    friendDetail.person=(privateResult || result[0]).person;
+    for (const [index,kind] of ["friends","events","interests"].entries())
+      friendDetail.lists[kind]={items:result[index].items,nextCursor:result[index].nextCursor,loading:false,error:""};
+  } catch (error) {
+    if (token!==friendDetailToken || data.user?.id!==owner) return;
+    friendDetail.error=error.message || "Unable to load shared connections.";
+  }
+  if (token===friendDetailToken) renderFriendDetails();
+}
+async function moreFriendConnections(kind) {
+  const state=friendDetail, list=state?.lists[kind], owner=data.user?.id, token=friendDetailToken;
+  if (!owner || !list?.nextCursor || list.loading || state.person?.isPrivate) return;
+  list.loading=true; list.error=""; renderFriendDetails();
+  try {
+    const result=await api(`/friends/people/${encodeURIComponent(state.id)}/connections?`+new URLSearchParams({kind,after:list.nextCursor}),{headers:{"X-Gather-Account":owner}});
+    if (token!==friendDetailToken || data.user?.id!==owner) return;
+    if (result.accountId!==owner || result.person?.id!==state.id) throw Error("Your account changed. Reload the page.");
+    if (result.person.isPrivate) { state.person=result.person; state.lists={}; }
+    else {
+      if (result.nextCursor && result.nextCursor===list.nextCursor) throw Error("Unable to load the next page. Please retry.");
+      list.items=[...new Map([...list.items,...result.items].map(item=>[item.id,item])).values()];
+      list.nextCursor=result.nextCursor;
+    }
+  } catch(error) {
+    if (token!==friendDetailToken || data.user?.id!==owner) return;
+    if (error.code === "ACCOUNT_CHANGED") {
+      state.person=null; state.lists={}; state.error="Your account changed. Reload the page.";
+    } else list.error=error.message || "Unable to load more connections.";
+  } finally {
+    if (token===friendDetailToken && data.user?.id===owner) {
+      list.loading=false; renderFriendDetails();
+      (document.querySelector(`[data-friend-more="${kind}"]`) || document.getElementById("friendDetailTitle"))?.focus();
+    }
+  }
 }
 function friendAction(id, decision) { return friendActions.act(id, decision); }
 function refreshFriend(id) { return friendActions.refreshPerson(id); }

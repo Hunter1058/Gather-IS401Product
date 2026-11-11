@@ -177,8 +177,9 @@ test('directory filters and ranks suggestions using shared RSVPs and mutual frie
   db.friendships.add([A, B].sort().join(':')); db.friendships.add([B, D].sort().join(':'));
   db.rsvps.set(A, new Set(['event-1'])); db.rsvps.set(C, new Set(['event-1']));
   const suggestions = await people(client, new URLSearchParams({ section: 'search' }));
-  assert.deepEqual(suggestions.people.map(p => p.id), [C, D]);
-  assert.equal(suggestions.people[0].sharedEvents, 1); assert.equal(suggestions.people[1].mutualFriends, 1);
+  assert.deepEqual(suggestions.people.map(p => p.id), [D, C]);
+  assert.equal(suggestions.people[1].sharedEvents, 1); assert.equal(suggestions.people[0].mutualFriends, 1);
+  assert.equal(suggestions.people[0].connectionDegree, 2);
   const friends = await people(client, new URLSearchParams({ section: 'friends' }));
   assert.deepEqual(friends.people.map(p => p.id), [B]);
   const matching = await people(client, new URLSearchParams({ section: 'search', search: 'DANA' }));
