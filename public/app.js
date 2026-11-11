@@ -976,6 +976,9 @@ window.addEventListener("beforeunload", (e) => {
     e.returnValue = "";
   }
 });
+document.addEventListener("click", (event) => {
+  if (!$("drawer").hidden && !$("drawer").contains(event.target) && !$("menuButton").contains(event.target)) toggleMenu();
+});
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !$("drawer").hidden) toggleMenu();
 });
