@@ -1832,3 +1832,28 @@ footer {
   border-radius: 50%;
   object-fit: cover;
 }
+
+.auth .delete-account > summary {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 10px;
+  padding: 0.65rem 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--destructive);
+  font-weight: 600;
+  text-align: center;
+  list-style: none;
+  cursor: pointer;
+}
+
+.auth .delete-account > summary::-webkit-details-marker {
+  display: none;
+}
+
+.auth .delete-account > summary:hover {
+  background: var(--hover);
+  box-shadow: var(--nav-shadow);
+}
