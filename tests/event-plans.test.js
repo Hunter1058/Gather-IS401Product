@@ -71,3 +71,24 @@ test('write failures are propagated and schema errors explain the migration', as
   db.errors.set('User', { code: '42703', message: 'missing UserID' });
   await assert.rejects(profileId(db.client, USER_A), { status: 503 });
 });
+
+test('friend attendance uses the caller-scoped RPC and preserves event IDs', async () => {
+  const db = database();
+  db.client.rpc = async (...args) => {
+    assert.deepEqual(args, ['gather_friends_going']);
+    return { data: [{ EventID: '9223372036854775807' }], error: null };
+  };
+  const state = await readPlans(db.client, USER_A);
+  assert.deepEqual(state.friendsGoing, ['9223372036854775807']);
+  assert.equal(state.friendsGoingError, '');
+});
+
+test('attendance query failures keep personal plans available with an explicit error', async () => {
+  const db = database();
+  await writePlan(db.client, USER_A, '1', 'bookmark', true);
+  db.client.rpc = async () => ({ data: null, error: { code: 'PGRST202' } });
+  const state = await readPlans(db.client, USER_A);
+  assert.deepEqual(state.saved, ['1']);
+  assert.deepEqual(state.friendsGoing, []);
+  assert.match(state.friendsGoingError, /could not be loaded/);
+});
