@@ -97,3 +97,33 @@ test('guest friends page offers sign-in without exposing profiles or making dire
   const f = await fixture({ guest: true }); assert.match(f.html(), /Sign in to connect/);
   assert.doesNotMatch(f.html(), /Blair|Send request/); assert.equal(f.db.calls.length, 0);
 });
+
+
+test('private request cards hide names and show escaped usernames beneath the heading', async () => {
+  const f = await fixture();
+  Object.assign(f.db.users[1], { is_private: true, display_name: 'Hidden Real Name',
+    username: 'blair<handle>', photo_url: 'https://example.test/private-photo.jpg' });
+  await f.db.rpc(B, 'send_friend_request', { p_recipient_user_id: A });
+  await f.run("selectFriendsTab('requests')");
+  assert.match(f.html(), /data-friend-heading="[^"]+">Private account<\/h3><p class="muted friend-username">@blair&lt;handle&gt;<\/p>/);
+  assert.doesNotMatch(f.html(), /Hidden Real Name|private-photo\.jpg/);
+  assert.match(f.html(), />Accept</); assert.match(f.html(), />Deny</);
+  await f.run(`friendAction('${B}', 'accept')`);
+  await f.run("selectFriendsTab('friends')");
+  assert.match(f.html(), /Private account<\/h3><p class="muted friend-username">@blair&lt;handle&gt;<\/p>/);
+  assert.match(f.html(), /Remove friend/);
+});
+
+test('public cards show names above usernames and missing usernames have no placeholder line', async () => {
+  const f = await fixture();
+  f.db.users[1].username = 'blair';
+  await f.run("selectFriendsTab('search')");
+  assert.match(f.html(), /Blair &lt;friend&gt;<\/h3><p class="muted friend-username">@blair<\/p>/);
+  for (const isPrivate of [true, false]) {
+    f.db.users[1].is_private = isPrivate;
+    f.db.users[1].username = null;
+    await f.run('refreshPeople()');
+    assert.doesNotMatch(f.html(), /friend-username|@null|@undefined/);
+    assert.match(f.html(), isPrivate ? />Private account<\/h3>/ : />Blair &lt;friend&gt;<\/h3>/);
+  }
+});
