@@ -181,7 +181,7 @@ const settingsPage = /^\/settings\/?$/.test(location.pathname);
 function renderAccountHeader(name = data.user?.name) {
   const button = $("userButton");
   button.classList.toggle("profile-avatar", Boolean(data.user));
-  button.textContent = data.user
+  if (!button.querySelector(".account-avatar-image")) button.textContent = data.user
     ? (name || "Account").trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase()
     : "Sign in";
   button.title = data.user ? name || "My account" : "Sign in";

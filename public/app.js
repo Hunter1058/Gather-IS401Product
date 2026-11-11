@@ -54,7 +54,6 @@ let page = "home",
     from: "",
     to: "",
     food: false,
-    free: false,
     spiritual: false,
   },
   filtersOpen = false,
@@ -285,7 +284,6 @@ function toolbar() {
 
   const foodFilters = [
     ["food", "Has food"],
-    ["free", "Free events"],
     ["spiritual", "Spiritual"],
   ].map(([k, l]) =>
     `<label><input type="checkbox"
@@ -743,7 +741,7 @@ function renderBase() {
         .join("")
         .toUpperCase();
 
-      userButton.textContent = initials;
+      if (!userButton.querySelector(".account-avatar-image")) userButton.textContent = initials;
       userButton.classList.add("profile-avatar");
       userButton.title = data.user.name || "My account";
     } else {

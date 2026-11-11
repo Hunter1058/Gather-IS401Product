@@ -150,6 +150,7 @@ export const server = http.createServer(async (req, res) => {
               start: r.EventTime,
               description: r.EventDescription,
               imageUrl: r.EventImage || stockImageUrl || null,
+              imageType: r.EventImage ? "flyer" : "stock",
               end: null,
               club: null,
               major: null,

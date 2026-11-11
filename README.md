@@ -4,9 +4,10 @@ Gather is a BYU campus events website built for IS 401. It brings listings from 
 
 ## Run Gather locally
 
-You’ll need Node.js 22 or later and access to a Supabase project.
+You’ll need Node.js 22 or later, access to a Supabase project, and a Google Gemini API key if you plan to use automatic event categorization.
 
 1. Clone this repository and open the project folder in a terminal.
+
 2. Install dependencies:
 
    ```bash
@@ -14,19 +15,53 @@ You’ll need Node.js 22 or later and access to a Supabase project.
    ```
 
 3. Set up the database:
-   - **Team database:** Use the team’s Supabase project settings if the database is already set up.
+   - **Team database:** Use the team's existing Supabase project settings if the database is already configured.
    - **New database:** Run [`supabase/schema.sql`](supabase/schema.sql) in the Supabase SQL Editor. Run [`supabase/seed.sql`](supabase/seed.sql) if you want sample events for development.
-   - **Existing database that predates RSVPs and bookmarks:** Apply the [event plans migration](supabase/migrations/20261102000000_event_plans.sql) if it hasn’t already been applied. See the [event plans setup and API guide](docs/EVENT-PLANS-SETUP.md) for details.
+   - **Existing database that predates RSVPs and bookmarks:** Apply the [event plans migration](supabase/migrations/20261102000000_event_plans.sql) if it hasn't already been applied. See the [event plans setup and API guide](docs/EVENT-PLANS-SETUP.md) for details.
+   - **Event categories:** Ensure the `EventCategory` and `Event_Category_Linking_Table` tables are configured for AI categorization.
 
-4. Copy [`.env.example`](.env.example) to `.env` in the project root. Set the Supabase project URL and the publishable key or legacy `anon` key:
+4. Configure environment variables:
+
+   Copy [`.env.example`](.env.example) to `.env` in the project root.
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Add the following configuration values:
 
    ```dotenv
+   # Supabase connection
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_KEY=your-publishable-key
+
+   # Supabase privileged keys
+   SUPABASE_SECRET_KEY=your-secret-key
+   SUPABASE_AI_SECRET_KEY=your-ai-secret-key
+
+   # Google Gemini AI
+   GEMINI_API_KEY=your-gemini-api-key
+
+   # Local server
    PORT=3000
    ```
 
-5. Start the app:
+   **Environment variable purposes:**
+
+   | Variable | Description |
+   |---|---|
+   | `SUPABASE_URL` | URL of the Supabase project used by Gather. |
+   | `SUPABASE_KEY` | Supabase publishable or legacy anon key for the application. |
+   | `SUPABASE_SECRET_KEY` | Privileged key used by event scraping and import scripts. |
+   | `SUPABASE_AI_SECRET_KEY` | Privileged key used to update event categories in Supabase. |
+   | `GEMINI_API_KEY` | Google Gemini API key used for automatic event categorization. |
+   | `PORT` | Port used by the local server (default: 3000). |
+
+   The Gemini and privileged Supabase keys are only needed for the scripts that use them. They are not required simply to browse Gather locally.
+
+   **Security:** Never commit `.env` or expose privileged Supabase and Gemini keys in frontend JavaScript. Keep these credentials private.
+
+5. Start the application:
 
    ```bash
    npm start
@@ -34,13 +69,32 @@ You’ll need Node.js 22 or later and access to a Supabase project.
 
 6. Open [Gather on localhost](http://localhost:3000).
 
-Keep your local `.env` file out of Git.
+7. Optional — Run AI event categorization:
+
+   Gather uses Google Gemini to analyze event titles and descriptions and assign categories from the existing Supabase database.
+
+   ```bash
+   node --env-file=.env categorize-events.js
+   ```
+
+   The script processes uncategorized events in batches. Run it again to process additional events.
+
+   Events with uploaded flyers display their original images. Events without flyers can display category-specific stock images stored in Supabase Storage.
+
+   Automatic categorization is also configured through `.github/workflows/categorize-events.yml`, which runs every six hours and supports manual execution. The GitHub repository must have the following Actions secrets configured:
+
+   - `SUPABASE_URL`
+   - `SUPABASE_AI_SECRET_KEY`
+   - `GEMINI_API_KEY`
 
 ## Verify the sign-in flow
 
 1. Open Gather, select **Sign in**, and create an account.
-2. Sign in and refresh the page. Your session should stay active.
-3. Sign out and refresh again. You should remain signed out and be able to sign back in.
+2. Sign in and refresh the page. Your session should remain active.
+3. Open **Profile settings** and update your name, profile picture, or event interests.
+4. Verify that your saved profile picture appears in the navigation bar across Discover, Events, Calendar, Friends, and Settings.
+5. Refresh the website to confirm your profile settings persist.
+6. Sign out and refresh again. You should remain signed out and be able to sign back in.
 
 ## Import event listings
 
