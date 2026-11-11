@@ -181,7 +181,7 @@ const settingsPage = /^\/settings\/?$/.test(location.pathname);
 function renderAccountHeader(name = data.user?.name, photoUrl = data.user?.photoUrl) {
   const button = $("userButton");
   button.classList.toggle("profile-avatar", Boolean(data.user));
-  button.textContent = data.user
+  if (!button.querySelector(".account-avatar-image")) button.textContent = data.user
     ? (name || "Account").trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase()
     : "Sign in";
   button.title = data.user ? name || "My account" : "Sign in";
@@ -233,7 +233,7 @@ async function loadSettings() {
         <p class="muted">${esc(data.user.email || "")}</p>
         <p>Profile visibility: ${profile.isPrivate ? "Private" : "Public"}</p>
         <h3>Event interests</h3>
-        <p>${interests.length ? interests.map(category => esc(category.EventCatagory || "Unnamed category")).join(", ") : "No interests selected."}</p>
+        <p>${interests.length ? interests.map(category => categoryLabel(category)).join(", ") : "No interests selected."}</p>
         <p id="settingsSaved" role="status" tabindex="-1">${esc(message)}</p>
         <button id="editSettings" class="primary" type="button">Edit profile</button>
         <button type="button" onclick="go('saved')">View saved plans</button>
@@ -302,7 +302,7 @@ async function loadSettings() {
         <fieldset><legend>Event interests</legend>
           <p class="muted">Choose any categories you’re interested in.</p>
           <div class="settings-interests">${profile.categories.map(category =>
-            `<label><input type="checkbox" name="categoryId" value="${esc(category.id)}" ${selected.has(category.id) ? "checked" : ""}> ${esc(category.EventCatagory || "Unnamed category")}</label>`
+          `<label><input type="checkbox" name="categoryId" value="${esc(category.id)}" ${selected.has(category.id) ? "checked" : ""}> ${categoryLabel(category)}</label>`
           ).join("") || "<p>No categories available.</p>"}</div>
         </fieldset>
         <p id="settingsStatus" role="status"></p>
@@ -353,6 +353,265 @@ async function loadSettings() {
   }
 }
 
+const categoryEmojis = {
+  "Academic": "📚",
+  "Arts": "🎨",
+  "Career & Networking": "💼",
+  "Culture": "🌎",
+  "Dance": "💃",
+  "Fitness": "💪",
+  "Food": "🍕",
+  "Games": "🎮",
+  "Music": "🎵",
+  "Outdoors": "🏕️",
+  "Service & Volunteering": "🤝",
+  "Social": "🎉",
+  "Spiritual & Religious": "✨",
+  "Sports": "⚽",
+  "Technology": "💻"
+};
+
+function categoryLabel(category) {
+  const name = category.EventCatagory || "Unnamed category";
+  return `${categoryEmojis[name] || "📅"} ${esc(name)}`;
+}
+
+async function loadSignup() {
+  const app = $("app");
+
+  app.innerHTML = '<div class="auth">Loading signup form…</div>';
+
+  try {
+    const { categories } = await api("/categories");
+
+    const signupData = {
+      firstName: "",
+      lastName: "",
+      username: "",
+      email: "",
+      password: "",
+      photo: null,
+      visibility: "private",
+      categoryIds: []
+    };
+
+    // STEP 1: Account details
+    function showStep1() {
+      app.innerHTML = `
+        <form class="auth" id="signupStep1">
+          <span class="eyebrow">Step 1 of 2</span>
+          <h1>Create your account</h1>
+          <p class="muted">Join Gather and discover what's happening on campus.</p>
+
+          <label>First name
+            <input name="firstName" required maxlength="60"
+              autocomplete="given-name" value="${esc(signupData.firstName)}">
+          </label>
+
+          <label>Last name
+            <input name="lastName" maxlength="60"
+              autocomplete="family-name" value="${esc(signupData.lastName)}">
+          </label>
+
+          <label>Username
+            <input name="username" required minlength="3" maxlength="30"
+              pattern="[A-Za-z0-9_]{3,30}"
+              autocomplete="username" value="${esc(signupData.username)}">
+          </label>
+          <p class="muted">3–30 letters, numbers, or underscores.</p>
+
+          <label>Email
+            <input name="email" type="email" required
+              autocomplete="email" value="${esc(signupData.email)}">
+          </label>
+
+          <label>Password
+            <input name="password" type="password" required minlength="8"
+              autocomplete="new-password">
+          </label>
+
+          <label>Confirm password
+            <input name="confirmPassword" type="password" required minlength="8"
+              autocomplete="new-password">
+          </label>
+
+          <p id="signupError" class="error" role="alert"></p>
+
+          <button class="primary" type="submit">Next: Personalize</button>
+          <button type="button" onclick="go('login')">
+            Already have an account? Sign in
+          </button>
+        </form>
+      `;
+
+      $("signupStep1").addEventListener("submit", event => {
+        event.preventDefault();
+
+        const fields = new FormData(event.currentTarget);
+
+        if (fields.get("password") !== fields.get("confirmPassword")) {
+          $("signupError").textContent = "Passwords do not match.";
+          return;
+        }
+
+        signupData.firstName = fields.get("firstName").trim();
+        signupData.lastName = fields.get("lastName").trim();
+        signupData.username = fields.get("username").trim().toLowerCase();
+        signupData.email = fields.get("email").trim();
+        signupData.password = fields.get("password");
+
+        showStep2();
+      });
+    }
+
+    // STEP 2: Profile personalization
+    function showStep2() {
+      const selected = new Set(signupData.categoryIds);
+
+      app.innerHTML = `
+        <form class="auth" id="signupStep2">
+          <span class="eyebrow">Step 2 of 2</span>
+          <h1>Make Gather yours</h1>
+          <p class="muted">Choose your interests to see relevant events first.</p>
+
+          <label>Profile picture (optional)
+            <input name="photo" type="file"
+              accept="image/jpeg,image/png,image/webp">
+          </label>
+          <p class="muted">JPG, PNG, or WebP. Maximum 5 MB.</p>
+
+          <label>Profile visibility
+            <select name="visibility">
+              <option value="private" ${signupData.visibility === "private" ? "selected" : ""}>Private</option>
+              <option value="public" ${signupData.visibility === "public" ? "selected" : ""}>Public</option>
+            </select>
+          </label>
+
+          <fieldset>
+            <legend>What events interest you?</legend>
+            <p class="muted">Select as many categories as you like.</p>
+
+            <div class="settings-interests">
+              ${categories.map(category => `
+                <label>
+                  <input type="checkbox" name="categoryId"
+                    value="${esc(category.id)}"
+                    ${selected.has(category.id) ? "checked" : ""}>
+                    ${categoryLabel(category)}
+                </label>
+              `).join("")}
+            </div>
+          </fieldset>
+
+          <p id="signupError" class="error" role="alert"></p>
+
+          <button class="primary" type="submit">Create my account</button>
+          <button id="signupBack" type="button">Back</button>
+        </form>
+      `;
+
+      $("signupBack").addEventListener("click", () => {
+        const fields = new FormData($("signupStep2"));
+        signupData.visibility = fields.get("visibility");
+        signupData.categoryIds = fields.getAll("categoryId");
+        signupData.photo = fields.get("photo")?.size
+          ? fields.get("photo")
+          : signupData.photo;
+        showStep1();
+      });
+
+      $("signupStep2").addEventListener("submit", async event => {
+        event.preventDefault();
+
+        const form = event.currentTarget;
+        const fields = new FormData(form);
+        const button = form.querySelector('[type="submit"]');
+        const status = $("signupError");
+
+        button.disabled = true;
+        status.textContent = "Creating your account…";
+
+        try {
+          signupData.visibility = fields.get("visibility");
+          signupData.categoryIds = fields.getAll("categoryId");
+
+          const file = fields.get("photo");
+          if (file?.size) signupData.photo = file;
+
+          const photoUrl = signupData.photo
+            ? await prepareProfilePhoto(signupData.photo)
+            : undefined;
+
+          const result = await api("/auth/signup", {
+            method: "POST",
+            body: JSON.stringify({
+              name: `${signupData.firstName} ${signupData.lastName}`.trim(),
+              email: signupData.email,
+              password: signupData.password
+            })
+          });
+
+          // Never retain the password after the signup request.
+          signupData.password = "";
+
+          const profile = {
+            firstName: signupData.firstName,
+            lastName: signupData.lastName,
+            username: signupData.username,
+            photoUrl,
+            isPrivate: signupData.visibility === "private",
+            categoryIds: signupData.categoryIds
+          };
+
+          if (result.user) {
+            await api("/settings", {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Gather-Account": result.user.id
+              },
+              body: JSON.stringify(profile)
+            });
+
+            location.replace("/");
+          } else {
+            // Email confirmation required. Save non-password profile
+            // choices locally until the user confirms and signs in.
+            sessionStorage.setItem(
+              "gatherPendingSignup",
+              JSON.stringify({ email: signupData.email, profile })
+            );
+
+            app.innerHTML = `
+              <section class="auth">
+                <h1>Check your email!</h1>
+                <p>We've sent you a confirmation link.</p>
+                <p class="muted">
+                  After confirming your email, sign in to finish
+                  setting up your profile.
+                </p>
+                <a href="/login">Go to sign in</a>
+              </section>
+            `;
+          }
+        } catch (error) {
+          status.textContent = error.message;
+          button.disabled = false;
+        }
+      });
+    }
+
+    showStep1();
+
+  } catch (error) {
+    app.innerHTML = `<section class="auth">
+      <h1>Unable to load signup</h1>
+      <p role="alert">${esc(error.message)}</p>
+      <button onclick="boot()">Try again</button>
+    </section>`;
+  }
+}
+
 async function boot() {
   try {
     if (location.protocol !== "file:") {
@@ -362,8 +621,13 @@ async function boot() {
     }
     renderAccountHeader();
     if (settingsPage) document.title = "Profile settings | Gather";
-    if (settingsPage && data.user && backendMode === "supabase") await loadSettings();
-    else $("app").innerHTML = auth(signup);
+    if (settingsPage && data.user && backendMode === "supabase") {
+  await loadSettings();
+} else if (signup && backendMode === "supabase") {
+  await loadSignup();
+} else {
+  $("app").innerHTML = auth(signup);
+}
     $("footerMode").textContent = backendMode === "demo" ? "Demo mode · Plans saved in this browser" : "Connected to Supabase";
     window.lucide?.createIcons();
   } catch {

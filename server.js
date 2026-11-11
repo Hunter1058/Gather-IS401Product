@@ -103,7 +103,7 @@ export const server = http.createServer(async (req, res) => {
       if (route === "/events" && req.method === "GET") {
         const { data, error } = await publicClient
           .from("Events")
-          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, EventImage, CampusLocation, categoryLinks:Event_Category_Linking_Table(category:EventCategory(EventCatagory))")          .order("EventDate", { ascending: true })
+          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, EventImage, CampusLocation, categoryLinks:Event_Category_Linking_Table(IsPrimary, category:EventCategory(EventCatagory, EventStockImage))")
           .limit(500);
         
         if (error) throw error;
@@ -127,17 +127,30 @@ export const server = http.createServer(async (req, res) => {
             const categories = [...new Set(links.map(link => link.category?.EventCatagory)
               .filter(value => typeof value === "string" && value.trim())
               .map(value => value.trim()))].sort();
+            const primaryLink = links.find(link => link.IsPrimary) || links[0];
+            const primaryCategory = primaryLink?.category?.EventCatagory
+              || categories[0]
+              || "Campus event";
+
+            const stockImagePath = primaryLink?.category?.EventStockImage;
+
+            const stockImageUrl = stockImagePath
+              ? publicClient.storage
+                  .from("Stock_Images")
+                  .getPublicUrl(stockImagePath).data.publicUrl
+              : null;
             return {
               id: String(r.EventID),
               name: r.EventName || "Campus event",
-              category: categories[0] || "Campus event",
+              category: primaryCategory,
               categories,
               location: r.EventLocation,
               campusLocation: r.CampusLocation,
               date: r.EventDate,
               start: r.EventTime,
               description: r.EventDescription,
-              imageUrl: r.EventImage || null, 
+              imageUrl: r.EventImage || stockImageUrl || null,
+              imageType: r.EventImage ? "flyer" : "stock",
               end: null,
               club: null,
               major: null,
@@ -149,6 +162,19 @@ export const server = http.createServer(async (req, res) => {
           }),
         });
       }
+      // Public event categories for the signup interests form.
+if (route === "/categories" && req.method === "GET") {
+  const client = makeClient();
+
+  const { data: categories, error } = await client
+    .from("EventCategory")
+    .select("id:EventCatID::text, EventCatagory")
+    .order("EventCatagory");
+
+  if (error) throw error;
+
+  return json(res, 200, { categories });
+}
 
       // Login and account creation through Supabase Auth.
       if (["/auth/login", "/auth/signup"].includes(route) && req.method === "POST") {

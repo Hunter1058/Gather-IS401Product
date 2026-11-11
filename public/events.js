@@ -21,11 +21,33 @@ const key = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStar
 // Demo/local state is kept separately in the browser for quick prototype use.
 let events = [];
 let availableCategories = [];
+let preferredCategories = new Set();
+
+function personalizedEventSort(a, b) {
+  // Earlier dates always appear first.
+  const dateComparison = (a.date || "9999-12-31")
+    .localeCompare(b.date || "9999-12-31");
+
+  if (dateComparison !== 0) return dateComparison;
+
+  // On the same date, preferred categories come first.
+  const aPreferred = eventCategories(a).some(
+    category => preferredCategories.has(category)
+  );
+  const bPreferred = eventCategories(b).some(
+    category => preferredCategories.has(category)
+  );
+
+  if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+
+  // Then sort by start time.
+  return (a.start || "99:99").localeCompare(b.start || "99:99");
+}
 let data = { saved:[], rsvp:[], user:null, friends:[] };
 try { const stored = JSON.parse(localStorage.getItem("gather-events-v1")); if (stored) data = { ...data, ...stored }; } catch {}
 
 let mode = "upcoming", view = new URL(location.href).searchParams.get("view") === "calendar" ? "calendar" : "list";
-let filters = { q:"", category:[], campus:"", location:"", club:"", major:"", from:"", to:"", free:false };
+let filters = { q:"", category:[], campus:"", location:"", club:"", major:"", from:"", to:"" };
 let filtersOpen = false;
 let toolbarCollapsed = false;
 let month = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -64,7 +86,7 @@ function poster(event, extra = "") {
   const imageUrl = event.imageUrl?.trim();
   if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
     return `
-      <div class="${classes} event-photo-poster">
+      <div class="${classes} event-photo-poster ${event.imageType === "stock" ? "stock-image" : "real-flyer"}">
         <img src="${esc(imageUrl)}" alt="" loading="lazy">
       </div>`;
   }
@@ -134,8 +156,8 @@ function filteredEvents() {
         : mode === "rsvp"
         ? data.rsvp.includes(event.id) && !past
         : !past;
-    return allowed && (!filters.q || `${event.name} ${event.club||""} ${event.location}`.toLowerCase().includes(filters.q.toLowerCase())) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus) && (!filters.free||event.price===0);
-  }).sort((a,b)=>`${a.date || "9999-12-31"}${a.start || ""}`.localeCompare(`${b.date || "9999-12-31"}${b.start || ""}`));
+    return allowed && (!filters.q || `${event.name} ${event.club||""} ${event.location}`.toLowerCase().includes(filters.q.toLowerCase())) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus);
+  }).sort(personalizedEventSort);
 }
 function options(values, current) { return `<option value="">All</option>`+values.map((value)=>`<option ${value===current?"selected":""}>${esc(value)}</option>`).join(""); }
 function filterSelect(label, keyName, values) { return `<label>${label}<select onchange="setFilter('${keyName}',this.value)">${options(values,filters[keyName])}</select></label>`; }
@@ -175,7 +197,7 @@ function renderToolbar() {
       }</div>
     </details>
   </div>`;
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends going"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["free","Free events"]].map(([keyName,label])=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends going"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
   const toolbar = $("toolbar");
   toolbar.className = `toolbar event-toolbar${toolbarCollapsed ? " is-collapsed" : ""}`;
   toolbar.innerHTML = `<div id="eventSearchControls" ${toolbarCollapsed ? "hidden" : ""}>${toolbar.innerHTML}</div><div class="toolbar-collapse-row"><button type="button" class="toolbar-reset" onclick="clearFilters()" aria-label="Reset search and filters">${icon("rotate-ccw")} Reset filters</button><button type="button" id="toolbarCollapseButton" class="toolbar-collapse" aria-controls="eventSearchControls" aria-expanded="${!toolbarCollapsed}" onclick="toggleToolbar()">${icon(toolbarCollapsed ? "chevron-down" : "chevron-up")}<span>${toolbarCollapsed ? "Show search & filters" : "Minimize"}</span></button></div>`;
@@ -309,7 +331,7 @@ function renderUserProfile() {
       .slice(0, 2)
       .join("")
       .toUpperCase();
-    userButton.textContent = initials;
+    if (!userButton.querySelector(".account-avatar-image")) userButton.textContent = initials;
     userButton.classList.add("profile-avatar");
     userButton.title = data.user.name || data.user.email || "My account";
   } else {
@@ -352,6 +374,27 @@ async function boot() {
       }));
       if (sessionResult.status === "fulfilled") {
         data.user = sessionResult.value.user;
+        if (data.user) {
+  try {
+    const profile = await api("/settings", {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Gather-Account": data.user.id
+      }
+    });
+
+    const selected = new Set(profile.categoryIds.map(String));
+
+    preferredCategories = new Set(
+      profile.categories
+        .filter(category => selected.has(String(category.id)))
+        .map(category => category.EventCatagory)
+    );
+  } catch (error) {
+    console.warn("Unable to load event preferences:", error);
+    preferredCategories = new Set();
+  }
+}
         if (data.user) {
           try {
             const result = await api("/state");

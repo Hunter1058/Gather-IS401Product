@@ -27,6 +27,28 @@ const key = (d) =>
 
 // Runtime data starts empty; database mode loads events and account state on boot.
 let events = [];
+let preferredCategories = new Set();
+function personalizedEventSort(a, b) {
+  const dateComparison = (a.date || "9999-12-31")
+    .localeCompare(b.date || "9999-12-31");
+
+  if (dateComparison !== 0) return dateComparison;
+
+  const aPreferred = eventCategories(a).some(
+    category => preferredCategories.has(category)
+  );
+
+  const bPreferred = eventCategories(b).some(
+    category => preferredCategories.has(category)
+  );
+
+  if (aPreferred !== bPreferred) {
+    return aPreferred ? -1 : 1;
+  }
+
+  return (a.start || "99:99").localeCompare(b.start || "99:99");
+}
+
 let data = {
   saved: [],
   rsvp: [],
@@ -54,7 +76,6 @@ let page = "home",
     from: "",
     to: "",
     food: false,
-    free: false,
     spiritual: false,
   },
   filtersOpen = false,
@@ -215,8 +236,9 @@ function listEvents() {
         (!filters.spiritual || eventCategories(e).includes("Spiritual"))
       );
     })
-    .sort((a, b) => (a.date + a.start).localeCompare(b.date + b.start));
+    .sort(personalizedEventSort);
 }
+
 function card(event) {
   return `<article class="card event-card" data-event-id="${esc(event.id)}" tabindex="0" aria-label="View details for ${esc(event.name)}" onclick="activateEventCard(event, '${event.id}')" onkeydown="activateEventCard(event, '${event.id}')">
     ${poster(event)}
@@ -285,7 +307,6 @@ function toolbar() {
 
   const foodFilters = [
     ["food", "Has food"],
-    ["free", "Free events"],
     ["spiritual", "Spiritual"],
   ].map(([k, l]) =>
     `<label><input type="checkbox"
@@ -736,8 +757,8 @@ function renderBase() {
         .slice(0, 2)
         .join("")
         .toUpperCase();
-    
-      userButton.textContent = initials;
+
+      if (!userButton.querySelector(".account-avatar-image")) userButton.textContent = initials;
       userButton.classList.add("profile-avatar");
       userButton.title = data.user.name || "My account";
     } else {
@@ -938,6 +959,27 @@ async function boot() {
 
         const session = await api("/auth/session");
         data.user = session.user;
+        if (data.user) {
+  try {
+    const profile = await api("/settings", {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Gather-Account": data.user.id
+      }
+    });
+
+    const selected = new Set(profile.categoryIds.map(String));
+
+    preferredCategories = new Set(
+      profile.categories
+        .filter(category => selected.has(String(category.id)))
+        .map(category => category.EventCatagory)
+    );
+  } catch (error) {
+    console.warn("Unable to load event preferences:", error);
+    preferredCategories = new Set();
+  }
+}
 
         // Show the signed-in profile immediately, before event loading.
         render();

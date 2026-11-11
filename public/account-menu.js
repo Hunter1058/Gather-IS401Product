@@ -14,6 +14,39 @@ globalThis.accountMenu = (() => {
 
   let user;
   let signOut;
+  let photoRequest = 0;
+
+  async function refreshAvatar() {
+    const request = ++photoRequest;
+    const accountId = user?.id;
+    trigger.querySelector(".account-avatar-image")?.remove();
+    trigger.classList.remove("has-profile-photo");
+    if (!accountId) return;
+
+    try {
+      const response = await fetch("/api/settings", {
+        credentials: "same-origin",
+        headers: { "X-Gather-Account": accountId }
+      });
+      if (!response.ok) return;
+
+      const profile = await response.json();
+      if (request !== photoRequest || user?.id !== accountId) return;
+
+      const photo = profile.photoUrl?.trim();
+      if (!photo || !/^(https?:\/\/|data:image\/jpeg;base64,)/i.test(photo)) return;
+
+      const img = document.createElement("img");
+      img.className = "account-avatar-image";
+      img.src = photo;
+      img.alt = "";
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;";
+      trigger.replaceChildren(img);
+      trigger.classList.add("has-profile-photo");
+    } catch {
+      // Keep initials if profile loading fails.
+    }
+  }
 
   function setOpen(open) {
     panel.hidden = !open;
@@ -82,8 +115,15 @@ globalThis.accountMenu = (() => {
         trigger.append(photo);
       }
       if (user !== currentUser) setOpen(false);
+      const previousId = user?.id;
       user = currentUser;
       signOut = logout;
+      if (previousId !== user?.id || (user && !trigger.querySelector(".account-avatar-image"))) refreshAvatar();
+      if (!user) {
+        ++photoRequest;
+        trigger.querySelector(".account-avatar-image")?.remove();
+    trigger.classList.remove("has-profile-photo");
+      }
       if (user) {
         trigger.setAttribute("aria-controls", panel.id);
         trigger.setAttribute("aria-expanded", String(!panel.hidden));
