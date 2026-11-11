@@ -178,14 +178,14 @@ async function signOut() {
 }
 const settingsPage = /^\/settings\/?$/.test(location.pathname);
 
-function renderAccountHeader(name = data.user?.name) {
+function renderAccountHeader(name = data.user?.name, photoUrl = data.user?.photoUrl) {
   const button = $("userButton");
   button.classList.toggle("profile-avatar", Boolean(data.user));
   button.textContent = data.user
     ? (name || "Account").trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase()
     : "Sign in";
   button.title = data.user ? name || "My account" : "Sign in";
-  globalThis.accountMenu?.update(data.user, signOut);
+  globalThis.accountMenu?.update(data.user, signOut, photoUrl);
   $("sideUserButton").textContent = data.user ? "Account" : "Sign in";
 }
 
@@ -221,7 +221,7 @@ async function loadSettings() {
       const photo = profile.photoUrl?.trim();
       const initials = name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase();
       const interests = profile.categories.filter(category => profile.categoryIds.includes(category.id));
-      renderAccountHeader(name);
+      renderAccountHeader(name, profile.photoUrl);
       app.innerHTML = `<section class="auth">
         <h1>Profile settings</h1>
         <div class="avatar settings-photo" aria-hidden="true">
