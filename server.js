@@ -162,6 +162,19 @@ export const server = http.createServer(async (req, res) => {
           }),
         });
       }
+      // Public event categories for the signup interests form.
+if (route === "/categories" && req.method === "GET") {
+  const client = makeClient();
+
+  const { data: categories, error } = await client
+    .from("EventCategory")
+    .select("id:EventCatID::text, EventCatagory")
+    .order("EventCatagory");
+
+  if (error) throw error;
+
+  return json(res, 200, { categories });
+}
 
       // Login and account creation through Supabase Auth.
       if (["/auth/login", "/auth/signup"].includes(route) && req.method === "POST") {
