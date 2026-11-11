@@ -21,6 +21,28 @@ const key = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStar
 // Demo/local state is kept separately in the browser for quick prototype use.
 let events = [];
 let availableCategories = [];
+let preferredCategories = new Set();
+
+function personalizedEventSort(a, b) {
+  // Earlier dates always appear first.
+  const dateComparison = (a.date || "9999-12-31")
+    .localeCompare(b.date || "9999-12-31");
+
+  if (dateComparison !== 0) return dateComparison;
+
+  // On the same date, preferred categories come first.
+  const aPreferred = eventCategories(a).some(
+    category => preferredCategories.has(category)
+  );
+  const bPreferred = eventCategories(b).some(
+    category => preferredCategories.has(category)
+  );
+
+  if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+
+  // Then sort by start time.
+  return (a.start || "99:99").localeCompare(b.start || "99:99");
+}
 let data = { saved:[], rsvp:[], user:null, friends:[] };
 try { const stored = JSON.parse(localStorage.getItem("gather-events-v1")); if (stored) data = { ...data, ...stored }; } catch {}
 
@@ -135,7 +157,7 @@ function filteredEvents() {
         ? data.rsvp.includes(event.id) && !past
         : !past;
     return allowed && (!filters.q || `${event.name} ${event.club||""} ${event.location}`.toLowerCase().includes(filters.q.toLowerCase())) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus);
-  }).sort((a,b)=>`${a.date || "9999-12-31"}${a.start || ""}`.localeCompare(`${b.date || "9999-12-31"}${b.start || ""}`));
+  }).sort(personalizedEventSort);
 }
 function options(values, current) { return `<option value="">All</option>`+values.map((value)=>`<option ${value===current?"selected":""}>${esc(value)}</option>`).join(""); }
 function filterSelect(label, keyName, values) { return `<label>${label}<select onchange="setFilter('${keyName}',this.value)">${options(values,filters[keyName])}</select></label>`; }
@@ -351,6 +373,27 @@ async function boot() {
       }));
       if (sessionResult.status === "fulfilled") {
         data.user = sessionResult.value.user;
+        if (data.user) {
+  try {
+    const profile = await api("/settings", {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Gather-Account": data.user.id
+      }
+    });
+
+    const selected = new Set(profile.categoryIds.map(String));
+
+    preferredCategories = new Set(
+      profile.categories
+        .filter(category => selected.has(String(category.id)))
+        .map(category => category.EventCatagory)
+    );
+  } catch (error) {
+    console.warn("Unable to load event preferences:", error);
+    preferredCategories = new Set();
+  }
+}
         if (data.user) {
           try {
             const result = await api("/state");
