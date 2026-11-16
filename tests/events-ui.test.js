@@ -9,7 +9,7 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', open: false, hidden: true,
-      classList: { add() {}, remove() {} }, addEventListener() {}, setAttribute() {}, showModal() { this.open = true; }, close() { this.open = false; } });
+      classList: { add() {}, remove() {}, toggle() {} }, querySelector() { return null; }, addEventListener() {}, setAttribute() {}, showModal() { this.open = true; }, close() { this.open = false; } });
     return elements.get(id);
   };
   const records = { saved: [...saved], rsvp: [...rsvp] }, writes = [];
@@ -26,6 +26,7 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
       let payload;
       if (path === '/api/config') payload = { mode: 'supabase' };
       else if (path === '/api/events') payload = { events: [{ id: '1', name: 'Jazz <friends>', category: 'Arts', categories: ['Arts', 'Spiritual'], location: 'Music Building', date: '2099-11-05', start: null, end: null, price: 0, food: false }] };
+      else if (path === '/api/settings') payload = { categoryIds: [], categories: [] };
       else if (path === '/api/auth/session') {
         if (sessionError) return { ok: false, async json() { return { error: 'Account service unavailable' }; } };
         payload = { user };

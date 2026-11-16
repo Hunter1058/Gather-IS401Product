@@ -145,3 +145,4 @@ Gather stores user profiles in `User` and event listings in `Events`. The `Bookm
 ![Entity relationship diagram for Gather’s events, user profiles, categories, bookmarks, RSVPs, and friendships](https://github.com/user-attachments/assets/b8ab864f-8352-45f6-9083-1221c3c2c010)
 
 See the [database schema](supabase/schema.sql) and [event plans migration](supabase/migrations/20261102000000_event_plans.sql) for the table definitions.
+For password recovery, durable signup profiles and authentication verification, see [AUTH-RECOVERY-SETUP.md](docs/AUTH-RECOVERY-SETUP.md) and [AUTH-TEST-CHECKLIST.md](docs/AUTH-TEST-CHECKLIST.md).
