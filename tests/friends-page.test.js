@@ -11,7 +11,7 @@ async function fixture({ guest = false, eventsFail = false, stateFail = false, c
   const el = id => {
     if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', hidden: true, open: false,
       showModal() { this.open=true; }, close() { this.open=false; },
-      classList: { add() {}, remove() {} }, setAttribute() {}, addEventListener() {}, focus() {} });
+      classList: { add() {}, remove() {}, toggle() {} }, querySelector() { return null; }, setAttribute() {}, addEventListener() {}, focus() {} });
     return elements.get(id);
   };
   const context = vm.createContext({ console: { ...console, error: (...args) => logs.push(args) }, URL, URLSearchParams, Date, Map, Set, encodeURIComponent,
@@ -25,6 +25,7 @@ async function fixture({ guest = false, eventsFail = false, stateFail = false, c
     async fetch(path, options = {}) {
       let body;
       if (path === '/api/config') body = { mode: 'supabase' };
+      else if (path === '/api/settings') body = { categoryIds: [], categories: [] };
       else if (path === '/api/auth/session') body = { user };
       else if (path === '/api/events') {
         if (eventsFail) return { ok: false, async json() { return { error: 'Events unavailable' }; } };

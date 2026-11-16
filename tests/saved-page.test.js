@@ -8,7 +8,7 @@ test('Saved deep link filters to bookmarks and removes a card after unsaving', a
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
       innerHTML: '', textContent: '', hidden: true, open: false,
-      classList: { add() {}, remove() {} }, setAttribute() {}, addEventListener() {},
+      classList: { add() {}, remove() {}, toggle() {} }, querySelector() { return null; }, setAttribute() {}, addEventListener() {},
     });
     return elements.get(id);
   };
@@ -31,6 +31,7 @@ test('Saved deep link filters to bookmarks and removes a card after unsaving', a
       let body;
       if (path === '/api/config') body = { mode: 'supabase' };
       else if (path === '/api/events') body = { events };
+      else if (path === '/api/settings') body = { categoryIds: [], categories: [] };
       else if (path === '/api/auth/session') body = { user: { id: 'a', name: 'Student' } };
       else if (path === '/api/state') body = { accountId: 'a', state: { saved, rsvp: [] } };
       else if (path === '/api/events/2/bookmark') {

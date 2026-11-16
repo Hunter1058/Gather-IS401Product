@@ -63,7 +63,7 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     db.rows.Events[0].categoryLinks = { category: { EventCatagory: 'Arts' } };
     db.rows.Events[1].categoryLinks = [
       { category: { EventCatagory: 'Spiritual' } },
-      { category: { EventCatagory: 'Arts' } },
+      { IsPrimary: true, category: { EventCatagory: 'Arts' } },
       { category: { EventCatagory: 'Arts' } },
       { category: null },
     ];
@@ -81,7 +81,7 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     assert.equal(listed[2].category, 'Campus event');
     assert.deepEqual(listed[2].categories, []);
     assert.match(db.calls.find(c => c.table === 'Events').projection,
-      /categoryLinks:Event_Category_Linking_Table\(category:EventCategory\(EventCatagory\)\)/);
+      /categoryLinks:Event_Category_Linking_Table\(IsPrimary, category:EventCategory\(EventCatagory, EventStockImage\)\)/);
     db.errors.set('Events', { message: 'category listing denied' });
     assert.equal((await call('/events')).status, 500);
     db.errors.delete('Events');

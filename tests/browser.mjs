@@ -102,7 +102,43 @@ try {
 
   await page.getByRole('button', { name: 'Calendar view', exact: true }).click();
   await page.getByRole('button', { name: 'List view', exact: true }).waitFor();
-  await page.locator('.calendar').waitFor();
+  await page.locator('.calendar').first().waitFor();
+  assert.equal(await page.locator('.calendar-month').count(), 1);
+  const expectedMonths = [0].map(offset => new Date(new Date().getFullYear(), new Date().getMonth() + offset, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }));
+  assert.deepEqual(await page.locator('.calendar-month h2').allTextContents(), expectedMonths);
+  await page.getByRole('button', { name: 'Next month', exact: true }).click();
+  const nextMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  assert.equal(await page.locator('.calendar-month h2').textContent(), nextMonth);
+  await page.getByRole('button', { name: 'Previous month', exact: true }).click();
+  assert.deepEqual(await page.locator('.calendar-month h2').allTextContents(), expectedMonths);
+  // Follow the fixture date when a test runs near the end of the month.
+  await page.evaluate(() => { month = new Date(events[0].date + 'T12:00:00'); month.setDate(1); renderResults(); });
+  // Busy dates stay fixed and reveal the complete schedule in a dialog.
+  await page.evaluate(() => {
+    const source = events[0];
+    for (let index = 0; index < 20; index++) events.push({ ...source, id: `busy-${index}`, name: `Extra event ${index} with a very long title` });
+    renderResults();
+  });
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const heights = await page.locator('.calendar-month .day').evaluateAll(days => days.map(day => day.getBoundingClientRect().height));
+    assert.equal(new Set(heights).size, 1);
+    assert.equal(heights[0], width === 390 ? 82 : 156);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    const busyDay = page.locator('.calendar-day').filter({ has: page.locator('.calendar-more') }).first();
+    assert.equal(await busyDay.locator('.calevent').count(), 2);
+    await busyDay.click();
+    await page.locator('#dayModal').waitFor();
+    assert.equal(await page.locator('#dayModal .event-card').count(), 22);
+    await page.locator('#dayModal .event-card').first().click();
+    assert.equal(await page.locator('#modal').evaluate(dialog => dialog.open), true);
+    await page.getByRole('button', { name: 'Close event details', exact: true }).click();
+    assert.equal(await page.locator('#dayModal').evaluate(dialog => dialog.open), true);
+    await page.getByRole('button', { name: 'Close day schedule', exact: true }).click();
+    assert.equal(await page.locator('#dayModal').evaluate(dialog => dialog.open), false);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(() => { events = events.filter(event => !String(event.id).startsWith('busy-')); renderResults(); });
   await page.getByRole('button', { name: 'List view', exact: true }).click();
   await page.getByRole('button', { name: 'Calendar view', exact: true }).waitFor();
   await page.locator('.event-card').first().waitFor();
@@ -125,7 +161,7 @@ try {
   assert.equal(await control('bookmark').evaluate(el => el === document.activeElement), true);
   wait = 0;
   await control('rsvp').click(); await pressed('rsvp', true);
-  assert.equal(await page.locator('dialog').evaluate(el => el.open), false, 'list action must not open a modal');
+  assert.equal(await page.locator('#modal').evaluate(el => el.open), false, 'list action must not open a modal');
   await page.reload(); await pressed('bookmark', true); await pressed('rsvp', true);
 
   failure = true;
@@ -163,7 +199,7 @@ try {
   await page.getByRole('button', { name: 'View details for Jazz & friends', exact: true }).click();
   await page.locator('dialog [data-plan-kind="rsvp"]').click();
   await page.waitForFunction(() => document.querySelector('dialog [data-plan-kind="rsvp"]')?.getAttribute('aria-pressed') === 'true');
-  assert.equal(await page.locator('dialog').evaluate(el => el.open), true);
+  assert.equal(await page.locator('#modal').evaluate(el => el.open), true);
   await page.getByRole('button', { name: 'Close event details' }).click();
   await mkdir(new URL('../artifacts/', import.meta.url), { recursive: true });
   await page.screenshot({ path: new URL('../artifacts/events-desktop.png', import.meta.url).pathname, fullPage: true });

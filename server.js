@@ -7,6 +7,8 @@
  */
 
 import http from "node:http";
+import { authObject, emailInput, passwordInput, signupProfile, providerFailure, authLimiter, authFailure } from "./lib/auth-input.js";
+import { passwordRecovery } from "./lib/password-recovery.js";
 import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,13 +49,10 @@ const publicClient = configured ? makeClient() : null;
 
 // Request-scoped clients restore verified sessions on any Vercel instance.
 const sessionCookies = authSessions(makeClient, { secure: production });
-// Best-effort per-worker throttle; production-wide abuse limits belong at the
-// platform/Supabase layer rather than relying on this process-local counter.
-const attempts = new Map();
-setInterval(() => {
-  for (const [id, attempt] of attempts)
-    if (Date.now() - attempt.since > 15 * 60 * 1000) attempts.delete(id);
-}, 60000).unref();
+const limitAuth = authLimiter();
+const recovery = passwordRecovery({makeClient,sessionCookies,secure:production,port,limit:limitAuth});
+// Production must never offer browser-only demo accounts after a misconfiguration.
+if (production && !configured) throw Error("Configure Supabase before deploying Gather.");
 
 const userView = (u) =>
   u ? {
@@ -85,6 +84,8 @@ async function body(req) {
 // Main HTTP server: static files, API routes, authentication, and state storage.
 export const server = http.createServer(async (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   try {
     const url = new URL(req.url, "http://localhost");
@@ -205,23 +206,36 @@ if (route === "/auth/username-available" && req.method === "POST") {
 
       // Login and account creation through Supabase Auth.
       if (["/auth/login", "/auth/signup"].includes(route) && req.method === "POST") {
-        const ip = req.socket.remoteAddress;
-        const a = attempts.get(ip) || { count: 0, since: Date.now() };
-        if (Date.now() - a.since > 15 * 60 * 1000) { a.count = 0; a.since = Date.now(); }
-        a.count++;
-        attempts.set(ip, a);
-        if (a.count > 20) return json(res, 429, { error: "Too many attempts." });
 
-        const b = await body(req);
-        if (typeof b.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email) || typeof b.password !== "string" || b.password.length < 8)
-          return json(res, 400, { error: "Enter a valid email and password." });
+const signingUp = route === "/auth/signup";
 
-        const client = makeClient();
+const input = authObject(
+  await body(req),
+  signingUp
+    ? ["email", "password", "name", "profile", "username"]
+    : ["email", "password"]
+);
 
-// Check username before creating the account.
-if (route === "/auth/signup") {
-  const username = typeof b.username === "string"
-    ? b.username.trim().replace(/^@/, "").toLowerCase()
+const email = emailInput(input.email);
+const password = passwordInput(input.password, signingUp);
+
+if (
+  input.name !== undefined &&
+  (typeof input.name !== "string" || input.name.trim().length > 121)
+) {
+  throw authFailure("Enter a valid name.");
+}
+
+const profile = signingUp ? signupProfile(input.profile) : undefined;
+
+limitAuth(req, signingUp ? "signup" : "login", email);
+
+const client = makeClient();
+
+// Check username availability before signup.
+if (signingUp) {
+  const username = typeof input.username === "string"
+    ? input.username.trim().replace(/^@/, "").toLowerCase()
     : "";
 
   if (!/^[a-z0-9_]{3,30}$/.test(username)) {
@@ -248,17 +262,52 @@ if (route === "/auth/signup") {
   }
 }
 
-const credentials = { email: b.email, password: b.password };
-        const result = route === "/auth/signup"
-            ? await client.auth.signUp({ ...credentials, options: { data: { name: b.name?.trim() } } })
-            : await client.auth.signInWithPassword(credentials);
-
-        if (result.error) return json(res, 400, { error: result.error.message });
-        if (!result.data.session) return json(res, 200, { user: null, message: "Check your email." });
-
-        sessionCookies.save(res, result.data.session);
-        return json(res, 200, { user: userView(result.data.user) });
+const result = signingUp
+  ? await client.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name: input.name?.trim(),
+          ...(profile ? { gather_signup_profile: profile } : {})
+        }
       }
+    })
+  : await client.auth.signInWithPassword({ email, password });
+
+providerFailure(result.error, !signingUp);
+
+if (!result.data?.session) {
+  if (!signingUp) {
+    throw authFailure(
+      "Account service is temporarily unavailable. Please try again.",
+      503
+    );
+  }
+
+  return json(res, 200, {
+    user: null,
+    message: "If this address is eligible, check your email to confirm it, then sign in."
+  });
+}
+
+if (!result.data.user) {
+  throw authFailure(
+    "Account service is temporarily unavailable. Please try again.",
+    503
+  );
+}
+
+sessionCookies.save(res, result.data.session);
+
+return json(res, 200, {
+  user: userView(result.data.user)
+});
+
+      }
+
+      if (["/auth/forgot-password","/auth/resend-confirmation"].includes(route) || route.startsWith("/auth/recovery/"))
+        return await recovery.handle(route,req,res,body,json);
 
       // Sign-out invalidates the server session and clears the browser cookie.
       if (route === "/auth/logout" && req.method === "POST") {
@@ -268,6 +317,7 @@ const credentials = { email: b.email, password: b.password };
           if (error) throw Object.assign(Error("Unable to sign out. Try again."), { status: 503 });
         }
         sessionCookies.clear(res);
+        recovery.clear(res);
         return json(res, 200, { ok: true });
       }
 
@@ -280,6 +330,7 @@ const credentials = { email: b.email, password: b.password };
           return json(res, 503, { error: "Account deletion is unavailable right now." });
 
         const input = await body(req);
+        limitAuth(req,"delete-verification",session.user.id);
         if (!input || typeof input.password !== "string" || !input.password ||
             input.password.length > 4096 || input.confirmation !== "DELETE")
           return json(res, 400, { error: "Enter your password and type DELETE to confirm." });
@@ -299,6 +350,7 @@ const credentials = { email: b.email, password: b.password };
         const { error } = await admin.auth.admin.deleteUser(session.user.id, false);
         if (error) return json(res, 503, { error: "Could not delete your account. Please try again." });
         sessionCookies.clear(res);
+        recovery.clear(res);
         return json(res, 200, { ok: true });
       }
 
@@ -436,15 +488,25 @@ const credentials = { email: b.email, password: b.password };
     // Non-API requests serve files from the public directory.
     // Dedicated page routes follow the same static HTML mapping.
     if (!["GET", "HEAD"].includes(req.method)) return json(res, 405, { error: "Method not allowed." });
-    const pageRoute = /^\/(events|login|signup|settings)\/?$/.exec(url.pathname);
+    const pageRoute = /^\/(events|login|signup|settings|recover)\/?$/.exec(url.pathname);
     if (pageRoute) url.pathname = `/${pageRoute[1] === "settings" ? "login" : pageRoute[1]}.html`;
-    const path = resolve(root, "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
+    let decodedPath;
+    try { decodedPath=decodeURIComponent(url.pathname); }
+    catch { throw authFailure("Invalid page path."); }
+    const path = resolve(root, "." + (decodedPath === "/" ? "/index.html" : decodedPath));
     if (!path.startsWith(root + "/")) return json(res, 403, { error: "Forbidden" });
+    const recoveryPage=path === resolve(root,"recover.html");
+    if (recoveryPage) {
+      res.setHeader("Cache-Control","no-store");
+      res.setHeader("Referrer-Policy","no-referrer");
+      res.setHeader("X-Frame-Options","DENY");
+      res.setHeader("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    }
 
     try {
       const content = await readFile(path);
       const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" }[extname(path)] || "application/octet-stream";
-      res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-cache" });
+      res.writeHead(200, { "Content-Type": mime, "Cache-Control": recoveryPage ? "no-store" : "no-cache" });
       res.end(req.method === "HEAD" ? undefined : content);
     } catch {
       return json(res, 404, { error: "Page not found." });
