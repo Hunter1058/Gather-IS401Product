@@ -7,7 +7,9 @@ test('real account routes validate inputs, isolate recovery, protect origins and
   Object.assign(process.env,{NODE_ENV:'test',SUPABASE_URL:'https://fixture.invalid',SUPABASE_KEY:'publishable-test',
     AUTH_RECOVERY_SECRET:'test-only-server-secret-'.repeat(3),APP_ORIGIN:'https://gather.example'});
   const calls=[];let providerError=null;
-  globalThis.__authHttpClient=()=>({auth:{
+  globalThis.__authHttpClient=()=>({
+  rpc: async () => ({data:true,error:null}),
+  auth:{
     async signInWithPassword(input){calls.push(['login',input]);return providerError?{error:providerError}:{data:{user:{id:'a',email:input.email},session:{access_token:'SECRET-access',refresh_token:'SECRET-refresh'}}};},
     async signUp(input){calls.push(['signup',input]);return {data:{user:{id:'new'},session:null},error:providerError};},
     async resetPasswordForEmail(...input){calls.push(['reset',...input]);return {error:providerError};},

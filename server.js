@@ -234,9 +234,9 @@ const client = makeClient();
 
 // Check username availability before signup.
 if (signingUp) {
-  const username = typeof input.username === "string"
-    ? input.username.trim().replace(/^@/, "").toLowerCase()
-    : "";
+  const username = typeof profile?.username === "string"
+  ? profile.username.trim().replace(/^@/, "").toLowerCase()
+  : "";
 
   if (!/^[a-z0-9_]{3,30}$/.test(username)) {
     return json(res, 400, {
