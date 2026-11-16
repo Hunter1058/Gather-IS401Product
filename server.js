@@ -177,26 +177,133 @@ if (route === "/categories" && req.method === "GET") {
   return json(res, 200, { categories });
 }
 
+  // Check username availability before personalization.
+if (route === "/auth/username-available" && req.method === "POST") {
+  const b = await body(req);
+  const username = typeof b.username === "string"
+    ? b.username.trim().replace(/^@/, "").toLowerCase()
+    : "";
+
+  if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+    return json(res, 400, {
+      error: "Username must be 3–30 letters, numbers, or underscores."
+    });
+  }
+
+  const { data: available, error } = await publicClient.rpc(
+    "is_username_available",
+    { requested_username: username }
+  );
+
+  if (error) {
+    return json(res, 503, {
+      error: "Unable to check username availability."
+    });
+  }
+
+  return json(res, 200, { available });
+}
+
       // Login and account creation through Supabase Auth.
       if (["/auth/login", "/auth/signup"].includes(route) && req.method === "POST") {
-        const signingUp=route==="/auth/signup";
-        const input=authObject(await body(req),signingUp?["email","password","name","profile"]:["email","password"]);
-        const email=emailInput(input.email),password=passwordInput(input.password,signingUp);
-        if (input.name!==undefined && (typeof input.name!=="string" || input.name.trim().length>121)) throw authFailure("Enter a valid name.");
-        const profile=signingUp?signupProfile(input.profile):undefined;
-        limitAuth(req,signingUp?"signup":"login",email);
-        const client=makeClient();
-        const result=signingUp
-          ? await client.auth.signUp({email,password,options:{data:{name:input.name?.trim(),...(profile?{gather_signup_profile:profile}:{})}}})
-          : await client.auth.signInWithPassword({email,password});
-        providerFailure(result.error,!signingUp);
-        if (!result.data?.session) {
-          if (!signingUp) throw authFailure("Account service is temporarily unavailable. Please try again.",503);
-          return json(res,200,{user:null,message:"If this address is eligible, check your email to confirm it, then sign in."});
+
+const signingUp = route === "/auth/signup";
+
+const input = authObject(
+  await body(req),
+  signingUp
+    ? ["email", "password", "name", "profile", "username"]
+    : ["email", "password"]
+);
+
+const email = emailInput(input.email);
+const password = passwordInput(input.password, signingUp);
+
+if (
+  input.name !== undefined &&
+  (typeof input.name !== "string" || input.name.trim().length > 121)
+) {
+  throw authFailure("Enter a valid name.");
+}
+
+const profile = signingUp ? signupProfile(input.profile) : undefined;
+
+limitAuth(req, signingUp ? "signup" : "login", email);
+
+const client = makeClient();
+
+// Check username availability before signup.
+if (signingUp) {
+  const username = typeof input.username === "string"
+    ? input.username.trim().replace(/^@/, "").toLowerCase()
+    : "";
+
+  if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+    return json(res, 400, {
+      error: "Username must be 3–30 letters, numbers, or underscores."
+    });
+  }
+
+  const { data: available, error: checkError } =
+    await client.rpc("is_username_available", {
+      requested_username: username
+    });
+
+  if (checkError) {
+    return json(res, 503, {
+      error: "Unable to check username availability. Try again."
+    });
+  }
+
+  if (!available) {
+    return json(res, 409, {
+      error: "That username is already taken. Please choose another."
+    });
+  }
+}
+
+const result = signingUp
+  ? await client.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name: input.name?.trim(),
+          ...(profile ? { gather_signup_profile: profile } : {})
         }
-        if (!result.data.user) throw authFailure("Account service is temporarily unavailable. Please try again.",503);
-        sessionCookies.save(res,result.data.session);
-        return json(res,200,{user:userView(result.data.user)});
+      }
+    })
+  : await client.auth.signInWithPassword({ email, password });
+
+providerFailure(result.error, !signingUp);
+
+if (!result.data?.session) {
+  if (!signingUp) {
+    throw authFailure(
+      "Account service is temporarily unavailable. Please try again.",
+      503
+    );
+  }
+
+  return json(res, 200, {
+    user: null,
+    message: "If this address is eligible, check your email to confirm it, then sign in."
+  });
+}
+
+if (!result.data.user) {
+  throw authFailure(
+    "Account service is temporarily unavailable. Please try again.",
+    503
+  );
+}
+
+sessionCookies.save(res, result.data.session);
+
+return json(res, 200, {
+  user: userView(result.data.user)
+});
+
       }
 
       if (["/auth/forgot-password","/auth/resend-confirmation"].includes(route) || route.startsWith("/auth/recovery/"))

@@ -50,6 +50,7 @@ function demoAuth(signup = false) {
   if (data.user && !signup)
     return `<div class="auth"><span class="eyebrow">Welcome back</span><h2>${esc(data.user.name)}</h2><p class="muted">Your plans are saved in this browser.</p><button class="primary" onclick="go('saved')">View saved events</button><button onclick="signOut()">Sign out</button></div>`;
   return `<form class="auth" onsubmit="authenticate(event,${signup})"><span class="eyebrow">Find your place</span><h2>${signup ? "Make yourself at home." : "Welcome back."}</h2><p class="muted">${signup ? "Create a demo profile to personalize your visit." : "Sign in to your demo profile."}</p><div class="notice">Prototype only. Use fictional details and a demo password. For a quick tour: <b>student / gather123</b>.</div>${signup ? '<label>Name<input name="name" required maxlength="60" autocomplete="off"></label><label>Email<input name="email" type="email" required autocomplete="off"></label>' : ""}<label>Username<input name="username" required autocomplete="off"></label><label>Password<input name="password" type="password" minlength="6" required autocomplete="off"></label><div id="authError" class="error" role="alert"></div><button class="primary" type="submit">${signup ? "Create account" : "Sign in"}</button><button type="button" onclick="go('${signup ? "login" : "signup"}')">${signup ? "Already have an account? Sign in" : "New here? Create an account"}</button><button type="button" onclick="go('home')">Continue as guest →</button></form>`;
+  
 }
 async function hash(s) {
   if (!crypto.subtle) throw Error("secure");
@@ -465,6 +466,9 @@ async function loadSignup() {
           <button type="button" onclick="go('login')">
             Already have an account? Sign in
           </button>
+          <button type="button" onclick="go('home')">
+          Continue as guest
+          </button>
         </form>
       `;
 
@@ -570,15 +574,22 @@ async function loadSignup() {
             : undefined;
 
           const result = await api("/auth/signup", {
-            method: "POST",
-            body: JSON.stringify({
-              name: `${signupData.firstName} ${signupData.lastName}`.trim(),
-              email: signupData.email,
-              password: signupData.password,
-              profile: {firstName:signupData.firstName,lastName:signupData.lastName,username:signupData.username,
-                isPrivate:signupData.visibility === "private",categoryIds:signupData.categoryIds}
-            })
-          });
+const result = await api("/auth/signup", {
+  method: "POST",
+  body: JSON.stringify({
+    name: `${signupData.firstName} ${signupData.lastName}`.trim(),
+    username: signupData.username,
+    email: signupData.email,
+    password: signupData.password,
+    profile: {
+      firstName: signupData.firstName,
+      lastName: signupData.lastName,
+      username: signupData.username,
+      isPrivate: signupData.visibility === "private",
+      categoryIds: signupData.categoryIds
+    }
+  })
+});
 
           // Clear the in-memory password once the account creation request succeeds.
           signupData.password = "";

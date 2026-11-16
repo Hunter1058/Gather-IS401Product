@@ -156,11 +156,50 @@ function filteredEvents() {
         : mode === "rsvp"
         ? data.rsvp.includes(event.id) && !past
         : !past;
-    return allowed && (!filters.q || `${event.name} ${event.club||""} ${event.location}`.toLowerCase().includes(filters.q.toLowerCase())) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus);
+    return allowed && smartEventMatch(event, filters.q) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus);
   }).sort(personalizedEventSort);
 }
 function options(values, current) { return `<option value="">All</option>`+values.map((value)=>`<option ${value===current?"selected":""}>${esc(value)}</option>`).join(""); }
 function filterSelect(label, keyName, values) { return `<label>${label}<select onchange="setFilter('${keyName}',this.value)">${options(values,filters[keyName])}</select></label>`; }
+
+function updateSearchSuggestions() {
+  const dropdown = document.getElementById("searchSuggestions");
+  if (!dropdown) return;
+
+  const query = filters.q.trim();
+
+  if (!query) {
+    dropdown.innerHTML = "";
+    dropdown.hidden = true;
+    return;
+  }
+
+  // Respect the current event filters.
+  const matches = listEvents().slice(0, 5);
+
+  if (!matches.length) {
+    dropdown.innerHTML =
+      '<div class="search-suggestion-empty">No matching events</div>';
+  } else {
+    dropdown.innerHTML = matches.map(event => `
+      <button type="button"
+        class="search-suggestion"
+        data-event-id="${esc(event.id)}">
+        <strong>${esc(event.name)}</strong>
+        <span>${esc(event.location || "Location TBD")}</span>
+      </button>
+    `).join("");
+  }
+
+  dropdown.hidden = false;
+}
+
+function selectSearchSuggestion(id) {
+  const dropdown = document.getElementById("searchSuggestions");
+  if (dropdown) dropdown.hidden = true;
+  openEvent(id);
+}
+
 function renderToolbar() {
   const categoryValues = availableCategories.length
     ? availableCategories
@@ -197,7 +236,7 @@ function renderToolbar() {
       }</div>
     </details>
   </div>`;
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends going"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}"oninput="filters.q=this.value;renderResults();updateSearchSuggestions()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends going"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
   const toolbar = $("toolbar");
   toolbar.className = `toolbar event-toolbar${toolbarCollapsed ? " is-collapsed" : ""}`;
   toolbar.innerHTML = `<div id="eventSearchControls" ${toolbarCollapsed ? "hidden" : ""}>${toolbar.innerHTML}</div><div class="toolbar-collapse-row"><button type="button" class="toolbar-reset" onclick="clearFilters()" aria-label="Reset search and filters">${icon("rotate-ccw")} Reset filters</button><button type="button" id="toolbarCollapseButton" class="toolbar-collapse" aria-controls="eventSearchControls" aria-expanded="${!toolbarCollapsed}" onclick="toggleToolbar()">${icon(toolbarCollapsed ? "chevron-down" : "chevron-up")}<span>${toolbarCollapsed ? "Show search & filters" : "Minimize"}</span></button></div>`;
