@@ -176,6 +176,33 @@ if (route === "/categories" && req.method === "GET") {
   return json(res, 200, { categories });
 }
 
+  // Check username availability before personalization.
+if (route === "/auth/username-available" && req.method === "POST") {
+  const b = await body(req);
+  const username = typeof b.username === "string"
+    ? b.username.trim().replace(/^@/, "").toLowerCase()
+    : "";
+
+  if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+    return json(res, 400, {
+      error: "Username must be 3–30 letters, numbers, or underscores."
+    });
+  }
+
+  const { data: available, error } = await publicClient.rpc(
+    "is_username_available",
+    { requested_username: username }
+  );
+
+  if (error) {
+    return json(res, 503, {
+      error: "Unable to check username availability."
+    });
+  }
+
+  return json(res, 200, { available });
+}
+
       // Login and account creation through Supabase Auth.
       if (["/auth/login", "/auth/signup"].includes(route) && req.method === "POST") {
         const ip = req.socket.remoteAddress;
@@ -190,7 +217,38 @@ if (route === "/categories" && req.method === "GET") {
           return json(res, 400, { error: "Enter a valid email and password." });
 
         const client = makeClient();
-        const credentials = { email: b.email, password: b.password };
+
+// Check username before creating the account.
+if (route === "/auth/signup") {
+  const username = typeof b.username === "string"
+    ? b.username.trim().replace(/^@/, "").toLowerCase()
+    : "";
+
+  if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+    return json(res, 400, {
+      error: "Username must be 3–30 letters, numbers, or underscores."
+    });
+  }
+
+  const { data: available, error: checkError } =
+    await client.rpc("is_username_available", {
+      requested_username: username
+    });
+
+  if (checkError) {
+    return json(res, 503, {
+      error: "Unable to check username availability. Try again."
+    });
+  }
+
+  if (!available) {
+    return json(res, 409, {
+      error: "That username is already taken. Please choose another."
+    });
+  }
+}
+
+const credentials = { email: b.email, password: b.password };
         const result = route === "/auth/signup"
             ? await client.auth.signUp({ ...credentials, options: { data: { name: b.name?.trim() } } })
             : await client.auth.signInWithPassword(credentials);

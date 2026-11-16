@@ -219,10 +219,7 @@ function listEvents() {
                 : !past;
       return (
         allowed &&
-        (!filters.q ||
-          `${esc(e.name)} ${esc(e.club)} ${esc(e.location)}`
-            .toLowerCase()
-            .includes(filters.q.toLowerCase())) &&
+        smartEventMatch(e, filters.q) &&
         (!filters.category || eventCategories(e).includes(filters.category)) &&
         (!filters.location || e.location === filters.location) &&
         (!filters.club || e.club === filters.club) &&
