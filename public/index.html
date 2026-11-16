@@ -43,7 +43,13 @@
     <aside id="drawer" class="drawer" hidden aria-label="Navigation">
       <button type="button" class="drawer-close" onclick="toggleMenu()">Close menu</button>
       <div class="brand">Gather<span>.</span></div>
-      <div id="sideNav"></div>
+      <nav aria-label="Side navigation">
+        <a href="/">Discover</a>
+        <a href="/events">Events</a>
+        <a href="/events?view=calendar">Calendar</a>
+        <a href="/#friends">Friends</a>
+        <a id="sideUserButton" href="/login">Sign in</a>
+      </nav>
     </aside>
     <!-- app.js replaces the contents of this element for legacy dynamic pages. -->
     <main id="app"><div class="empty">Loading your campus…</div></main>

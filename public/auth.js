@@ -186,7 +186,6 @@ function renderAccountHeader(name = data.user?.name, photoUrl = data.user?.photo
     : "Sign in";
   button.title = data.user ? name || "My account" : "Sign in";
   globalThis.accountMenu?.update(data.user, signOut, photoUrl);
-  $("sideUserButton").textContent = data.user ? "Account" : "Sign in";
 }
 
 async function prepareProfilePhoto(file) {

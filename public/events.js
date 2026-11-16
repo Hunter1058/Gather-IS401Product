@@ -283,13 +283,59 @@ function card(event) {
   </article>`;
 }
 function calendar(eventsToShow) {
-  const year=month.getFullYear(), monthIndex=month.getMonth();
-  const first=new Date(year,monthIndex,1).getDay(), days=new Date(year,monthIndex+1,0).getDate(), cells=[];
-  for(let index=0;index<Math.ceil((first+days)/7)*7;index++){ const day=index-first+1; if(day<1||day>days){cells.push('<div class="day dim"></div>');continue;} const date=key(new Date(year,monthIndex,day)); const dayEvents=eventsToShow.filter((event)=>event.date===date); cells.push(`<div class="day"><button class="daynum ${date===key(today)?"today":""}" onclick="selectDay('${date}')">${day}</button>${dayEvents.map((event)=>`<div class="calendar-event"><button class="calevent" onclick="openEvent('${event.id}')">${time(event.start)}<br>${esc(event.name)}</button><div class="row calendar-event-actions">${planButton("rsvp", event)}${shareButton(event)}</div></div>`).join("")}</div>`); }
-  return `<div class="row between section-head"><div class="row"><h2>${month.toLocaleDateString("en-US",{month:"long",year:"numeric"})}</h2><button onclick="month=new Date(today.getFullYear(),today.getMonth(),1);selectedDay='';renderResults()">Today</button></div><div class="row"><button aria-label="Previous month" onclick="changeMonth(-1)">←</button><button aria-label="Next month" onclick="changeMonth(1)">→</button></div></div><div class="calendar"><div class="calhead">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d)=>"<div>"+d+"</div>").join("")}</div><div class="calgrid">${cells.join("")}</div></div><div id="dayList" class="day-list">${selectedDay?`<div class="row between section-head"><h2>${pretty(selectedDay,true)}</h2><button onclick="selectedDay='';renderResults()">Back to month</button></div><div class="list">${eventsToShow.filter((event)=>event.date===selectedDay).map(card).join("")||'<div class="empty">No events on this day match your filters.</div>'}</div>`:'<p class="muted">Select a date to see its schedule, or an event to see the details.</p>'}</div>`;
+  const months = [month];
+  const sections = months.map((month, offset) => {
+    const year = month.getFullYear(), monthIndex = month.getMonth();
+    const first = month.getDay(), days = new Date(year, monthIndex + 1, 0).getDate();
+    const monthEvents = eventsToShow.filter(event => event.date.startsWith(key(month).slice(0, 7)));
+    const title = month.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const cells = [];
+    for (let index = 0; index < Math.ceil((first + days) / 7) * 7; index++) {
+      const day = index - first + 1;
+      if (day < 1 || day > days) {
+        cells.push('<div class="day dim" aria-hidden="true"></div>');
+        continue;
+      }
+      const date = key(new Date(year, monthIndex, day));
+      const dayEvents = monthEvents.filter(event => event.date === date);
+      const isToday = date === key(today);
+      cells.push(`<button type="button" class="day calendar-day ${date === selectedDay ? "selected-day" : ""}" aria-label="${esc(pretty(date, true))}, ${dayEvents.length} events. Open day schedule" aria-haspopup="dialog" onclick="selectDay('${date}')">
+        <span class="daynum ${isToday ? "today" : ""}" ${isToday ? 'aria-current="date"' : ""}>${day}</span>
+        <span class="calendar-previews">${dayEvents.slice(0, 2).map(event => `<span class="calevent"><span class="calendar-event-time">${time(event.start)}</span><span class="calendar-event-name">${esc(event.name)}</span></span>`).join("")}</span>
+        ${dayEvents.length > 2 ? `<span class="calendar-more">+${dayEvents.length - 2} more</span>` : ""}
+        ${dayEvents.length ? `<span class="calendar-mobile-count">${dayEvents.length}</span>` : ""}
+      </button>`);
+    }
+    return `<section class="calendar-month" aria-labelledby="monthTitle${offset}">
+      <div class="calendar-month-heading"><div><span class="eyebrow">${key(month) === key(new Date(today.getFullYear(), today.getMonth(), 1)) ? "This month" : "Campus calendar"}</span><h2 id="monthTitle${offset}">${title}</h2></div><div class="calendar-month-controls"><span class="calendar-month-count">${monthEvents.length} event${monthEvents.length === 1 ? "" : "s"}</span><button type="button" aria-label="Previous month" onclick="changeMonth(-1)">${icon("chevron-left")}</button><button type="button" aria-label="Next month" onclick="changeMonth(1)">${icon("chevron-right")}</button></div></div>
+      <div class="calendar"><div class="calhead">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => `<div>${day}</div>`).join("")}</div><div class="calgrid">${cells.join("")}</div></div>
+      ${monthEvents.length ? "" : '<p class="calendar-month-empty">No events match your filters this month.</p>'}
+    </section>`;
+  }).join("");
+  return `<p class="calendar-hint">Select a date for its full schedule. Use the arrows to explore other months.</p><div class="calendar-months">${sections}</div>`;
 }
-function changeMonth(offset) { month=new Date(month.getFullYear(),month.getMonth()+offset,1); selectedDay=""; renderResults(); }
-function selectDay(date) { selectedDay=date; renderResults(); $("dayList")?.scrollIntoView({behavior:"smooth",block:"start"}); }
+function changeMonth(offset) {
+  month = new Date(month.getFullYear(), month.getMonth() + offset, 1);
+  selectedDay = "";
+  renderResults();
+}
+function selectDay(date) {
+  selectedDay = date;
+  let dialog = $("dayModal");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "dayModal";
+    dialog.className = "day-modal";
+    dialog.setAttribute("aria-labelledby", "dayModalTitle");
+    document.body.append(dialog);
+    dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); });
+    dialog.addEventListener("close", () => { selectedDay = ""; dialog.replaceChildren(); });
+  }
+  const dayEvents = filteredEvents().filter(event => event.date === date);
+  dialog.innerHTML = `<button class="close" aria-label="Close day schedule" onclick="document.getElementById('dayModal').close()">✕</button><div class="dialog-body"><span class="eyebrow">Day schedule</span><h2 id="dayModalTitle">${pretty(date, true)}</h2><p class="muted">${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}${dayEvents.length ? " · Select an event for details." : " match your filters."}</p><div class="list">${dayEvents.map(card).join("") || '<div class="empty">No events on this day match your filters.</div>'}</div></div>`;
+  if (!dialog.open) dialog.showModal();
+  icons();
+}
 function renderResults() {
   if (mode === "friendsGoing" && (!data.user || data.friendsGoingError || !stateReady)) {
     $("results").innerHTML = `<div class="empty" role="status">${esc(!data.user ? "Sign in to see events your friends are going to." : data.friendsGoingError || "Friends’ attendance could not be loaded. Reload to try again.")}</div>`;
@@ -297,7 +343,10 @@ function renderResults() {
     return;
   }
   if(filters.from&&filters.to&&filters.from>filters.to){$("results").innerHTML='<div class="empty" role="alert">The end date must be on or after the start date.</div>';$("resultCount").textContent="0 events";return;}
-  const list=filteredEvents(); $("resultCount").textContent=`${list.length} event${list.length===1?"":"s"}`;
+  const rangeStart = key(month);
+  const rangeEnd = key(new Date(month.getFullYear(), month.getMonth() + 1, 1));
+  const list = filteredEvents().filter(event => view !== "calendar" || (event.date >= rangeStart && event.date < rangeEnd));
+  $("resultCount").textContent=`${list.length} event${list.length===1?"":"s"}`;
   const notice = planLoadError ? `<div class="notice" role="status">Events are available, but your account plans could not be loaded. ${esc(planLoadError)} <button onclick="boot()">Retry account</button></div>` : "";
   $("results").innerHTML=notice + (view=== "calendar"?calendar(list):list.length?`<div class="list">${list.map(card).join("")}</div>`:(mode === "past"
   ? `<div class="empty">
@@ -345,9 +394,6 @@ function renderUserProfile() {
     location.assign("/");
   });
 
-  $("sideUserButton").textContent = data.user
-    ? `${data.user.name || data.user.email || "Account"} ↗`
-    : "Sign in";
 }
 
 async function boot() {
@@ -443,6 +489,7 @@ const plans = window.GatherPlans.create({
   requireAccount, notify: toast, persistDemo,
   render: () => {
     renderResults();
+    if ($("dayModal")?.open && selectedDay) selectDay(selectedDay);
     if ($("modal").open && detailId) openEvent(detailId);
   },
 });

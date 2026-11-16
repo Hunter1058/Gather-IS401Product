@@ -741,12 +741,6 @@ function renderBase() {
         `<button class="${page === p ? "active" : ""}" onclick="go('${p}')">${n}</button>`,
     )
     .join("");
-  $("sideNav").innerHTML = [
-    [data.user ? "settings" : "login", data.user ? "Account" : "Sign in"],
-  ]
-    .map(([p, n]) => `<button onclick="go('${p}')">${n}</button>`)
-    .join("");
-
     const userButton = $("userButton");
 
     if (data.user) {

@@ -103,7 +103,10 @@ globalThis.accountMenu = (() => {
   return {
     update(currentUser, logout, photoUrl = currentUser?.photoUrl) {
       const sideLink = document.getElementById("sideUserButton");
-      if (sideLink) sideLink.href = currentUser ? "/settings" : "/login";
+      if (sideLink) {
+        sideLink.href = currentUser ? "/settings" : "/login";
+        sideLink.textContent = currentUser ? "Account" : "Sign in";
+      }
 
       if (currentUser && typeof photoUrl === "string" &&
           /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(photoUrl.trim())) {
