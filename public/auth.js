@@ -574,7 +574,6 @@ async function loadSignup() {
             : undefined;
 
           const result = await api("/auth/signup", {
-const result = await api("/auth/signup", {
   method: "POST",
   body: JSON.stringify({
     name: `${signupData.firstName} ${signupData.lastName}`.trim(),

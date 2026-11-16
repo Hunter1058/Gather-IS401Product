@@ -48,9 +48,10 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
     },
   });
   context.window = context;
-  vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
-  vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
-  vm.runInContext(await readFile(new URL('../public/events.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/smart-search.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/events.js', import.meta.url), 'utf8'), context);
   await new Promise(resolve => setImmediate(resolve));
   return { context, element, records, writes, run: code => vm.runInContext(code, context), fail() { failure = true; }, hold() { held = true; }, release() { held = false; release(); } };
 }
