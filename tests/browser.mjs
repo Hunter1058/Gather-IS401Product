@@ -283,7 +283,7 @@ try {
   // Exercise native Escape and redraw behavior in both real page implementations.
   for (const path of ['/events', '/']) {
     await page.goto(base + path);
-    await page.waitForFunction(() => backendMode === 'supabase' && events.length === 2 && data.user?.id === 'a');
+    await page.waitForFunction(() => backendMode === 'supabase' && events.length === 2 && data.user?.id === 'a' && stateReady);
     let start = views.length;
     const opened = page.waitForResponse(response => response.url().endsWith('/events/1/view'));
     await page.evaluate(() => openEvent('1')); await opened;

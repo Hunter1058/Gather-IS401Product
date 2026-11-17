@@ -517,6 +517,7 @@ function openEvent(id) {
   if (newView) void logEventView(id);
 }
 function closeModal() {
+  window.GatherProfilePhoto?.close(false);
   const target = friendDetail?.id;
   friendDetail = null; friendDetailToken++;
   $("modal").close();
@@ -657,10 +658,13 @@ function activateFriendCard(event, id) {
   void openFriend(id);
 }
 function renderFriendDetails() {
+  window.GatherProfilePhoto?.close(false);
   const state = friendDetail;
   if (!state) return;
   const person = state.person;
   const name = person ? person.isPrivate ? "Private account" : person.name : "Shared connections";
+  const photo = window.GatherProfilePhoto?.source(person);
+  const portrait = photo ? `<button type="button" id="friendDetailPhoto" class="friend-detail-photo" aria-label="Enlarge profile photo of ${esc(name)}" onclick="openFriendPhoto(this)"><img src="${esc(photo)}" alt="" referrerpolicy="no-referrer"><span aria-hidden="true">View photo</span></button>` : "";
   let content = state.error ? `<p class="error" role="alert">${esc(state.error)}</p><button type="button" onclick="openFriend('${state.id}')">Retry</button>`
     : !person ? '<p role="status">Loading shared connections…</p>'
     : person.isPrivate ? '<p>This profile is private. Shared connections, events and interests are hidden.</p>'
@@ -671,8 +675,16 @@ function renderFriendDetails() {
         + (list.error ? `<p class="error" role="alert">${esc(list.error)}</p>` : "")
         + (list.nextCursor ? `<button type="button" data-friend-more="${kind}" ${list.loading ? "disabled" : ""} onclick="moreFriendConnections('${kind}')">${list.loading ? "Loading…" : "Load more"}</button>` : "") + '</section>';
     }).join("");
-  showModal(`<button type="button" class="close" aria-label="Close shared connections" onclick="closeModal()">✕</button><div class="dialog-body friend-detail-body"><h2 tabindex="-1" id="friendDetailTitle">${esc(name)}</h2>${person?.username ? `<p class="muted friend-username">@${esc(person.username)}</p>` : ""}${content}</div>`, "Shared connections");
+  showModal(`<button type="button" class="close" aria-label="Close shared connections" onclick="closeModal()">✕</button><div class="dialog-body friend-detail-body"><div class="friend-detail-heading">${portrait}<div><h2 tabindex="-1" id="friendDetailTitle">${esc(name)}</h2>${person?.username ? `<p class="muted friend-username">@${esc(person.username)}</p>` : ""}</div></div>${content}</div>`, "Shared connections");
   document.getElementById("friendDetailTitle")?.focus();
+  window.GatherProfilePhoto?.prepareThumbnail(document.getElementById("friendDetailPhoto"));
+}
+function openFriendPhoto(trigger) {
+  const state = friendDetail, owner = data.user?.id;
+  if (!state?.person || !owner || friendActions.view().accountChanged) return;
+  window.GatherProfilePhoto?.open(state.person, trigger, () =>
+    friendDetail === state && data.user?.id === owner && page === "friends" &&
+    state.person?.isPrivate === false && !friendActions.view().accountChanged);
 }
 async function openFriend(id) {
   if (!data.user) { go("login"); return; }
@@ -1086,6 +1098,7 @@ const friendActions = window.GatherFriends.create({
   request: api, account: () => data.user?.id,
   changed: () => {
     if (page !== "friends") return;
+    if (friendDetail && (friendActions.view().accountChanged || !data.user)) closeModal();
     const focusedTab = document.activeElement?.getAttribute?.("role") === "tab" ? document.activeElement.id : null;
     render();
     if (focusedTab) document.getElementById(focusedTab)?.focus();

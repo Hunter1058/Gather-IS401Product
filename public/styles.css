@@ -2138,6 +2138,28 @@ footer {
   object-fit: cover;
 }
 
+/* Person details and the independent, full-photo dialog above them. */
+.friend-detail-heading { display: flex; align-items: center; gap: 16px; padding-right: 24px; margin-bottom: 24px; }
+.friend-detail-heading > div { min-width: 0; }
+.friend-detail-heading h2, .friend-detail-heading p { margin: 0; }
+.friend-detail-heading .friend-username { margin-top: 6px; }
+.friend-detail-photo { position: relative; flex: 0 0 72px; width: 72px; height: 72px; border-radius: 50%; padding: 0; overflow: hidden; }
+.friend-detail-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.friend-detail-photo span { position: absolute; inset: auto 0 0; padding: 3px 0 5px; color: #fff; background: #000b; font-size: 10px; }
+dialog.profile-photo-viewer { position: fixed; inset: 0; box-sizing: border-box; width: 100%; max-width: none; height: 100%; height: 100dvh; max-height: none; margin: 0; padding: 76px 24px 24px; border: 0; border-radius: 0; background: #0b1020ed; color: #fff; backdrop-filter: none; overscroll-behavior: contain; touch-action: pinch-zoom; }
+dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
+.profile-photo-viewer::backdrop { background: #0009; }
+.profile-photo-content { max-width: 100%; text-align: center; pointer-events: none; }
+.profile-photo-content img { width: min(80vw, 800px); height: auto; max-width: 100%; max-height: calc(100vh - 190px); max-height: calc(100dvh - 190px); object-fit: contain; pointer-events: auto; user-select: none; }
+.profile-photo-content img[hidden] { display: none; }
+.profile-photo-content p { font-size: 14px; line-height: 1.5; }
+.profile-photo-close { position: absolute; top: max(16px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); width: 48px; height: 48px; padding: 0; border: 1px solid #fff9; border-radius: 50%; background: #172134; color: #fff; font-size: 22px; }
+.profile-photo-close:focus-visible, .friend-detail-photo:focus-visible { outline: 3px solid #76cfff; outline-offset: 4px; }
+@media (max-width: 520px) {
+  dialog.profile-photo-viewer { padding: 76px 12px 24px; }
+  .friend-detail-heading { gap: 12px; }
+}
+
 .auth .delete-account > summary {
   display: block;
   box-sizing: border-box;

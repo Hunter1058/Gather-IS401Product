@@ -20,6 +20,7 @@
     <script defer src="friend-actions.js"></script>
     <script defer src="/smart-search.js"></script>
     <script defer src="/friend-attendance.js"></script>
+    <script defer src="profile-photo.js"></script>
     <script defer src="app.js"></script>
   </head>
   <body>
@@ -62,6 +63,14 @@
       >
     </footer>
     <dialog id="modal" aria-label="Event details"></dialog>
+    <dialog id="profilePhotoViewer" class="profile-photo-viewer" aria-label="Enlarged profile photo" aria-describedby="profilePhotoHelp">
+      <button type="button" id="profilePhotoClose" class="profile-photo-close" aria-label="Close enlarged photo" autofocus>✕</button>
+      <div class="profile-photo-content">
+        <img id="profilePhotoImage" alt="" referrerpolicy="no-referrer" draggable="false" hidden>
+        <p id="profilePhotoStatus" role="status" aria-live="polite"></p>
+        <p id="profilePhotoHelp">Swipe down, press Escape, or use the close button to return to the profile.</p>
+      </div>
+    </dialog>
     <div id="toast" class="toast" role="status"></div>
   </body>
 </html>
