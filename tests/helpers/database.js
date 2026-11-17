@@ -10,6 +10,10 @@ export function database() {
   const errors = new Map();
   const calls = [];
   const client = {
+    async rpc(name) {
+      assert.equal(name, "gather_event_friend_attendance");
+      return {data: [], error: null};
+    },
     from(table) {
       assert.ok(Object.hasOwn(rows, table), `Missing fixture data for table ${table}`);
       let operation = 'select', payload, filters = [], singular = false, projection;

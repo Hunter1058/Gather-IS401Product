@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#dce7f5" />
+    <title>Account recovery · Gather</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650;700&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/recovery-shell.css" />
+    <!-- Recovery removes the email hash before the account header starts. -->
+    <script defer src="/recovery.js"></script>
+    <script defer src="/account-menu.js"></script>
+    <script defer src="/recovery-nav.js"></script>
+  </head>
+  <body class="recovery-page">
+    <header>
+      <div class="row">
+        <button class="mobile-menu" id="menuButton" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="drawer">
+          <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+        <a class="brand recovery-brand" href="/" aria-label="Gather home">Gather<span>.</span></a>
+      </div>
+      <nav id="topnav" aria-label="Main navigation">
+        <a href="/">Discover</a>
+        <a href="/events">Events</a>
+        <a href="/events?view=calendar">Calendar</a>
+        <a href="/#friends">Friends</a>
+      </nav>
+      <button class="header-user" id="userButton" type="button">Sign in</button>
+    </header>
+    <aside id="drawer" class="drawer" hidden aria-label="Navigation">
+      <button type="button" class="drawer-close" id="closeNavigation">Close menu</button>
+      <div class="brand">Gather<span>.</span></div>
+      <nav aria-label="Mobile navigation">
+        <a href="/">Discover</a>
+        <a href="/events">Events</a>
+        <a href="/events?view=calendar">Calendar</a>
+        <a href="/#friends">Friends</a>
+        <a id="sideUserButton" href="/login">Sign in</a>
+      </nav>
+    </aside>
+    <main id="recoveryApp">
+      <section class="auth"><h1>Account recovery</h1><p role="status">Loading…</p></section>
+    </main>
+    <footer>
+      <span>Gather.</span>
+      <span>Account recovery</span>
+    </footer>
+    <div id="toast" class="toast" role="status"></div>
+  </body>
+</html>

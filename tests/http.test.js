@@ -13,7 +13,12 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
   let nextToken = 0;
   globalThis.__gatherTestClientFactory = () => {
     let current = null;
-    return { ...db.client, auth: {
+    return { ...db.client, async rpc(name,args) {
+      assert.equal(name,'gather_event_friend_attendance');
+      assert.deepEqual(Object.keys(args).sort(),['p_after_event_id','p_limit']);
+      return {data:current?.user.id===USER_A&&args.p_after_event_id===null
+        ? [{event_id:'2',friend_count:'1',friends:[{id:USER_B,label:'Blair'}]}] : []};
+    }, auth: {
       async signInWithPassword({ email }) {
         const user = { id: email.startsWith('a@') ? USER_A : USER_B, email };
         const access_token = 'access-' + ++nextToken, refresh_token = 'refresh-' + nextToken;
@@ -63,7 +68,7 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     db.rows.Events[0].categoryLinks = { category: { EventCatagory: 'Arts' } };
     db.rows.Events[1].categoryLinks = [
       { category: { EventCatagory: 'Spiritual' } },
-      { category: { EventCatagory: 'Arts' } },
+      { IsPrimary: true, category: { EventCatagory: 'Arts' } },
       { category: { EventCatagory: 'Arts' } },
       { category: null },
     ];
@@ -81,7 +86,7 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     assert.equal(listed[2].category, 'Campus event');
     assert.deepEqual(listed[2].categories, []);
     assert.match(db.calls.find(c => c.table === 'Events').projection,
-      /categoryLinks:Event_Category_Linking_Table\(category:EventCategory\(EventCatagory\)\)/);
+      /categoryLinks:Event_Category_Linking_Table\(IsPrimary, category:EventCategory\(EventCatagory, EventStockImage\)\)/);
     db.errors.set('Events', { message: 'category listing denied' });
     assert.equal((await call('/events')).status, 500);
     db.errors.delete('Events');
@@ -116,6 +121,12 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     assert.deepEqual((await (await call('/state', a)).json()).state.saved, ['1', '2']);
     assert.deepEqual((await (await call('/state', a)).json()).state.rsvp, []);
     assert.deepEqual((await (await call('/state', b)).json()).state.saved, []);
+    const attendanceA=await (await call('/state?UserID='+USER_B,a)).json();
+    const attendanceB=await (await call('/state',b)).json();
+    assert.equal(attendanceA.accountId,USER_A);
+    assert.deepEqual(attendanceA.state.friendAttendance,{'2':{count:'1',friends:[{id:USER_B,label:'Blair'}]}});
+    assert.deepEqual(attendanceB.state.friendAttendance,{});
+    assert.deepEqual(attendanceA.state.friendsGoing,['2']);
     assert.equal(db.rows.Bookmark[0].UserID, USER_A);
     assert.equal((await call('/events/1/bookmark', a, 'PUT', { bookmarked: true, UserID: USER_B })).status, 400);
     assert.equal((await call('/events/nope/rsvp', a, 'PUT', { going: true })).status, 400);

@@ -21,11 +21,33 @@ const key = (date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStar
 // Demo/local state is kept separately in the browser for quick prototype use.
 let events = [];
 let availableCategories = [];
+let preferredCategories = new Set();
+
+function personalizedEventSort(a, b) {
+  // Earlier dates always appear first.
+  const dateComparison = (a.date || "9999-12-31")
+    .localeCompare(b.date || "9999-12-31");
+
+  if (dateComparison !== 0) return dateComparison;
+
+  // On the same date, preferred categories come first.
+  const aPreferred = eventCategories(a).some(
+    category => preferredCategories.has(category)
+  );
+  const bPreferred = eventCategories(b).some(
+    category => preferredCategories.has(category)
+  );
+
+  if (aPreferred !== bPreferred) return aPreferred ? -1 : 1;
+
+  // Then sort by start time.
+  return (a.start || "99:99").localeCompare(b.start || "99:99");
+}
 let data = { saved:[], rsvp:[], user:null, friends:[] };
 try { const stored = JSON.parse(localStorage.getItem("gather-events-v1")); if (stored) data = { ...data, ...stored }; } catch {}
 
 let mode = "upcoming", view = new URL(location.href).searchParams.get("view") === "calendar" ? "calendar" : "list";
-let filters = { q:"", category:[], campus:"", location:"", club:"", major:"", from:"", to:"", free:false };
+let filters = { q:"", category:[], campus:"", location:"", club:"", major:"", from:"", to:"" };
 let filtersOpen = false;
 let toolbarCollapsed = false;
 let month = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -64,7 +86,7 @@ function poster(event, extra = "") {
   const imageUrl = event.imageUrl?.trim();
   if (imageUrl && /^https?:\/\//i.test(imageUrl)) {
     return `
-      <div class="${classes} event-photo-poster">
+      <div class="${classes} event-photo-poster ${event.imageType === "stock" ? "stock-image" : "real-flyer"}">
         <img src="${esc(imageUrl)}" alt="" loading="lazy">
       </div>`;
   }
@@ -81,7 +103,10 @@ function poster(event, extra = "") {
 async function api(path, options={}) {
   const response = await fetch("/api"+path, { credentials:"same-origin", headers:{"Content-Type":"application/json"}, ...options });
   const body = await response.json();
-  if (!response.ok) throw Error(body.error||"Request failed.");
+  if (!response.ok) {
+    window.GatherAttendance?.invalidate(data, response.status, body);
+    throw Object.assign(Error(body.error || "Request failed."), {status:response.status, code:body.code});
+  }
   return body;
 }
 function persistDemo() {
@@ -129,14 +154,55 @@ function filteredEvents() {
         ? data.saved.includes(event.id) && !past
         : mode === "savedPast"
         ? data.saved.includes(event.id) && past
+        : mode === "friendsGoing"
+        ? (data.friendsGoing || []).includes(event.id) && !past
         : mode === "rsvp"
         ? data.rsvp.includes(event.id) && !past
         : !past;
-    return allowed && (!filters.q || `${event.name} ${event.club||""} ${event.location}`.toLowerCase().includes(filters.q.toLowerCase())) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus) && (!filters.free||event.price===0);
-  }).sort((a,b)=>`${a.date || "9999-12-31"}${a.start || ""}`.localeCompare(`${b.date || "9999-12-31"}${b.start || ""}`));
+    return allowed && smartEventMatch(event, filters.q) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus);
+  }).sort(personalizedEventSort);
 }
 function options(values, current) { return `<option value="">All</option>`+values.map((value)=>`<option ${value===current?"selected":""}>${esc(value)}</option>`).join(""); }
 function filterSelect(label, keyName, values) { return `<label>${label}<select onchange="setFilter('${keyName}',this.value)">${options(values,filters[keyName])}</select></label>`; }
+
+function updateSearchSuggestions() {
+  const dropdown = document.getElementById("searchSuggestions");
+  if (!dropdown) return;
+
+  const query = filters.q.trim();
+
+  if (!query) {
+    dropdown.innerHTML = "";
+    dropdown.hidden = true;
+    return;
+  }
+
+  // Respect the current event filters.
+  const matches = listEvents().slice(0, 5);
+
+  if (!matches.length) {
+    dropdown.innerHTML =
+      '<div class="search-suggestion-empty">No matching events</div>';
+  } else {
+    dropdown.innerHTML = matches.map(event => `
+      <button type="button"
+        class="search-suggestion"
+        data-event-id="${esc(event.id)}">
+        <strong>${esc(event.name)}</strong>
+        <span>${esc(event.location || "Location TBD")}</span>
+      </button>
+    `).join("");
+  }
+
+  dropdown.hidden = false;
+}
+
+function selectSearchSuggestion(id) {
+  const dropdown = document.getElementById("searchSuggestions");
+  if (dropdown) dropdown.hidden = true;
+  openEvent(id);
+}
+
 function renderToolbar() {
   const categoryValues = availableCategories.length
     ? availableCategories
@@ -173,7 +239,7 @@ function renderToolbar() {
       }</div>
     </details>
   </div>`;
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}" oninput="filters.q=this.value;renderResults()"><button onclick="filtersOpen=!filtersOpen;renderToolbar()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label><div>${[["free","Free events"]].map(([keyName,label])=>`<label><input type="checkbox" ${filters[keyName]?"checked":""} onchange="setFilter('${keyName}',this.checked)"> ${label}</label>`).join("")}</div></div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}"oninput="filters.q=this.value;renderResults();updateSearchSuggestions()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends going"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
   const toolbar = $("toolbar");
   toolbar.className = `toolbar event-toolbar${toolbarCollapsed ? " is-collapsed" : ""}`;
   toolbar.innerHTML = `<div id="eventSearchControls" ${toolbarCollapsed ? "hidden" : ""}>${toolbar.innerHTML}</div><div class="toolbar-collapse-row"><button type="button" class="toolbar-reset" onclick="clearFilters()" aria-label="Reset search and filters">${icon("rotate-ccw")} Reset filters</button><button type="button" id="toolbarCollapseButton" class="toolbar-collapse" aria-controls="eventSearchControls" aria-expanded="${!toolbarCollapsed}" onclick="toggleToolbar()">${icon(toolbarCollapsed ? "chevron-down" : "chevron-up")}<span>${toolbarCollapsed ? "Show search & filters" : "Minimize"}</span></button></div>`;
@@ -211,7 +277,7 @@ window.addEventListener("scroll", () => {
 }, { passive: true });
 
 // Display switching: toggling changes the URL as well as the rendered page.
-function toggleView() { view=view=== "calendar"?"list":"calendar"; history.replaceState(null,"",view=== "calendar"?"/events?view=calendar":"/events"); $("pageTitle").textContent=view=== "calendar"?"Your campus calendar.":"What’s happening at BYU."; renderResults(); }
+function toggleView() { view=view=== "calendar"?"list":"calendar"; history.replaceState(null,"",view=== "calendar"?"/events?view=calendar":"/events"); $("pageTitle").textContent=view=== "calendar"?"Your campus calendar.":"What’s happening at BYU."; renderToolbar(); renderResults(); }
 
 // Both list and modal controls use the same per-event persistence controller.
 function bookmark(id) { return plans.set("bookmark", id); }
@@ -251,6 +317,7 @@ function card(event) {
         <span>${icon("clock")} ${pretty(event.date)} · ${time(event.start)}${event.end ? "–" + time(event.end) : ""}</span>
         <span>${icon("map-pin")} ${eventLocationLink(event)}</span>
       </div>
+      ${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}
       <div class="card-actions event-card-actions">
         ${planButton("rsvp", event)}
         ${shareButton(event)}
@@ -259,18 +326,72 @@ function card(event) {
   </article>`;
 }
 function calendar(eventsToShow) {
-  const year=month.getFullYear(), monthIndex=month.getMonth();
-  const first=new Date(year,monthIndex,1).getDay(), days=new Date(year,monthIndex+1,0).getDate(), cells=[];
-  for(let index=0;index<Math.ceil((first+days)/7)*7;index++){ const day=index-first+1; if(day<1||day>days){cells.push('<div class="day dim"></div>');continue;} const date=key(new Date(year,monthIndex,day)); const dayEvents=eventsToShow.filter((event)=>event.date===date); cells.push(`<div class="day"><button class="daynum ${date===key(today)?"today":""}" onclick="selectDay('${date}')">${day}</button>${dayEvents.map((event)=>`<div class="calendar-event"><button class="calevent" onclick="openEvent('${event.id}')">${time(event.start)}<br>${esc(event.name)}</button><div class="row calendar-event-actions">${planButton("rsvp", event)}${shareButton(event)}</div></div>`).join("")}</div>`); }
-  return `<div class="row between section-head"><div class="row"><h2>${month.toLocaleDateString("en-US",{month:"long",year:"numeric"})}</h2><button onclick="month=new Date(today.getFullYear(),today.getMonth(),1);selectedDay='';renderResults()">Today</button></div><div class="row"><button aria-label="Previous month" onclick="changeMonth(-1)">←</button><button aria-label="Next month" onclick="changeMonth(1)">→</button></div></div><div class="calendar"><div class="calhead">${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d)=>"<div>"+d+"</div>").join("")}</div><div class="calgrid">${cells.join("")}</div></div><div id="dayList" class="day-list">${selectedDay?`<div class="row between section-head"><h2>${pretty(selectedDay,true)}</h2><button onclick="selectedDay='';renderResults()">Back to month</button></div><div class="list">${eventsToShow.filter((event)=>event.date===selectedDay).map(card).join("")||'<div class="empty">No events on this day match your filters.</div>'}</div>`:'<p class="muted">Select a date to see its schedule, or an event to see the details.</p>'}</div>`;
+  const months = [month];
+  const sections = months.map((month, offset) => {
+    const year = month.getFullYear(), monthIndex = month.getMonth();
+    const first = month.getDay(), days = new Date(year, monthIndex + 1, 0).getDate();
+    const monthEvents = eventsToShow.filter(event => event.date.startsWith(key(month).slice(0, 7)));
+    const title = month.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const cells = [];
+    for (let index = 0; index < Math.ceil((first + days) / 7) * 7; index++) {
+      const day = index - first + 1;
+      if (day < 1 || day > days) {
+        cells.push('<div class="day dim" aria-hidden="true"></div>');
+        continue;
+      }
+      const date = key(new Date(year, monthIndex, day));
+      const dayEvents = monthEvents.filter(event => event.date === date);
+      const isToday = date === key(today);
+      cells.push(`<button type="button" class="day calendar-day ${date === selectedDay ? "selected-day" : ""}" aria-label="${esc(pretty(date, true))}, ${dayEvents.length} events. Open day schedule" aria-haspopup="dialog" onclick="selectDay('${date}')">
+        <span class="daynum ${isToday ? "today" : ""}" ${isToday ? 'aria-current="date"' : ""}>${day}</span>
+        <span class="calendar-previews">${dayEvents.slice(0, 2).map(event => `<span class="calevent"><span class="calendar-event-time">${time(event.start)}</span><span class="calendar-event-name">${esc(event.name)}</span></span>`).join("")}</span>
+        ${dayEvents.length > 2 ? `<span class="calendar-more">+${dayEvents.length - 2} more</span>` : ""}
+        ${dayEvents.length ? `<span class="calendar-mobile-count">${dayEvents.length}</span>` : ""}
+      </button>`);
+    }
+    return `<section class="calendar-month" aria-labelledby="monthTitle${offset}">
+      <div class="calendar-month-heading"><div><span class="eyebrow">${key(month) === key(new Date(today.getFullYear(), today.getMonth(), 1)) ? "This month" : "Campus calendar"}</span><h2 id="monthTitle${offset}">${title}</h2></div><div class="calendar-month-controls"><span class="calendar-month-count">${monthEvents.length} event${monthEvents.length === 1 ? "" : "s"}</span><button type="button" aria-label="Previous month" onclick="changeMonth(-1)">${icon("chevron-left")}</button><button type="button" aria-label="Next month" onclick="changeMonth(1)">${icon("chevron-right")}</button></div></div>
+      <div class="calendar"><div class="calhead">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => `<div>${day}</div>`).join("")}</div><div class="calgrid">${cells.join("")}</div></div>
+      ${monthEvents.length ? "" : '<p class="calendar-month-empty">No events match your filters this month.</p>'}
+    </section>`;
+  }).join("");
+  return `<p class="calendar-hint">Select a date for its full schedule. Use the arrows to explore other months.</p><div class="calendar-months">${sections}</div>`;
 }
-function changeMonth(offset) { month=new Date(month.getFullYear(),month.getMonth()+offset,1); selectedDay=""; renderResults(); }
-function selectDay(date) { selectedDay=date; renderResults(); $("dayList")?.scrollIntoView({behavior:"smooth",block:"start"}); }
+function changeMonth(offset) {
+  month = new Date(month.getFullYear(), month.getMonth() + offset, 1);
+  selectedDay = "";
+  renderResults();
+}
+function selectDay(date) {
+  selectedDay = date;
+  let dialog = $("dayModal");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "dayModal";
+    dialog.className = "day-modal";
+    dialog.setAttribute("aria-labelledby", "dayModalTitle");
+    document.body.append(dialog);
+    dialog.addEventListener("click", event => { if (event.target === dialog) dialog.close(); });
+    dialog.addEventListener("close", () => { selectedDay = ""; dialog.replaceChildren(); });
+  }
+  const dayEvents = filteredEvents().filter(event => event.date === date);
+  dialog.innerHTML = `<button class="close" aria-label="Close day schedule" onclick="document.getElementById('dayModal').close()">✕</button><div class="dialog-body"><span class="eyebrow">Day schedule</span><h2 id="dayModalTitle">${pretty(date, true)}</h2><p class="muted">${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}${dayEvents.length ? " · Select an event for details." : " match your filters."}</p><div class="list">${dayEvents.map(card).join("") || '<div class="empty">No events on this day match your filters.</div>'}</div></div>`;
+  if (!dialog.open) dialog.showModal();
+  icons();
+}
 function renderResults() {
+  if (mode === "friendsGoing" && (!data.user || data.friendsGoingError || !stateReady)) {
+    $("results").innerHTML = `<div class="empty" role="status">${esc(!data.user ? "Sign in to see events your friends are going to." : data.friendsGoingError || "Friends’ attendance could not be loaded. Reload to try again.")}</div>`;
+    $("resultCount").textContent = "";
+    return;
+  }
   if(filters.from&&filters.to&&filters.from>filters.to){$("results").innerHTML='<div class="empty" role="alert">The end date must be on or after the start date.</div>';$("resultCount").textContent="0 events";return;}
-  const list=filteredEvents(); $("resultCount").textContent=`${list.length} event${list.length===1?"":"s"}`;
+  const rangeStart = key(month);
+  const rangeEnd = key(new Date(month.getFullYear(), month.getMonth() + 1, 1));
+  const list = filteredEvents().filter(event => view !== "calendar" || (event.date >= rangeStart && event.date < rangeEnd));
+  $("resultCount").textContent=`${list.length} event${list.length===1?"":"s"}`;
   const notice = planLoadError ? `<div class="notice" role="status">Events are available, but your account plans could not be loaded. ${esc(planLoadError)} <button onclick="boot()">Retry account</button></div>` : "";
-  $("results").innerHTML=notice + (view=== "calendar"?calendar(list):list.length?`<div class="list">${list.map(card).join("")}</div>`:(mode === "past"
+  $("results").innerHTML=notice + (window.GatherAttendance?.notice(data, stateReady) || "") + (view=== "calendar"?calendar(list):list.length?`<div class="list">${list.map(card).join("")}</div>`:(mode === "past"
   ? `<div class="empty">
       <h3>No past saved events yet.</h3>
       <p class="muted">Events you've bookmarked or RSVP'd to from the past six months will appear here!</p>
@@ -288,7 +409,7 @@ function renderResults() {
 
 function showModal(html) { $("modal").innerHTML=html; if(!$("modal").open)$("modal").showModal(); icons(); }
 function closeModal() { if($("modal").open)$("modal").close(); detailId = null; }
-function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not Specified")}</b>Major relevance: ${esc(event.major||"Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not Specified")}</p></section><div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); }
+function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not Specified")}</b>Major relevance: ${esc(event.major||"Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not Specified")}</p></section>${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
 
@@ -302,7 +423,7 @@ function renderUserProfile() {
       .slice(0, 2)
       .join("")
       .toUpperCase();
-    userButton.textContent = initials;
+    if (!userButton.querySelector(".account-avatar-image")) userButton.textContent = initials;
     userButton.classList.add("profile-avatar");
     userButton.title = data.user.name || data.user.email || "My account";
   } else {
@@ -316,9 +437,6 @@ function renderUserProfile() {
     location.assign("/");
   });
 
-  $("sideUserButton").textContent = data.user
-    ? `${data.user.name || data.user.email || "Account"} ↗`
-    : "Sign in";
 }
 
 async function boot() {
@@ -345,6 +463,27 @@ async function boot() {
       }));
       if (sessionResult.status === "fulfilled") {
         data.user = sessionResult.value.user;
+        if (data.user) {
+  try {
+    const profile = await api("/settings", {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Gather-Account": data.user.id
+      }
+    });
+
+    const selected = new Set(profile.categoryIds.map(String));
+
+    preferredCategories = new Set(
+      profile.categories
+        .filter(category => selected.has(String(category.id)))
+        .map(category => category.EventCatagory)
+    );
+  } catch (error) {
+    console.warn("Unable to load event preferences:", error);
+    preferredCategories = new Set();
+  }
+}
         if (data.user) {
           try {
             const result = await api("/state");
@@ -384,12 +523,16 @@ async function boot() {
 }
 
 $("modal").addEventListener("click",(event)=>{ if(event.target===$("modal")) closeModal(); });
+document.addEventListener("click", (event) => {
+  if (!$("drawer").hidden && !$("drawer").contains(event.target) && !$("menuButton").contains(event.target)) toggleMenu();
+});
 document.addEventListener("keydown",(event)=>{ if(event.key=== "Escape"&&!$("drawer").hidden)toggleMenu(); });
 const plans = window.GatherPlans.create({
   request: api, state: () => data, isDemo: () => backendMode === "demo",
   requireAccount, notify: toast, persistDemo,
   render: () => {
     renderResults();
+    if ($("dayModal")?.open && selectedDay) selectDay(selectedDay);
     if ($("modal").open && detailId) openEvent(detailId);
   },
 });

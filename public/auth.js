@@ -18,6 +18,8 @@ try {
   const stored = JSON.parse(localStorage.getItem("gather-v1"));
   if (stored) data = { ...data, ...stored };
 } catch {}
+if (location.hash && /access_token=|refresh_token=|error_description=/.test(location.hash))
+  history.replaceState(null,"",location.pathname+location.search);
 const signup = /\/signup(?:\/|\.html)?$/.test(location.pathname);
 function go(page) {
   location.assign(({ home: "/", saved: "/#saved", login: "/login", signup: "/signup" })[page] || "/");
@@ -38,7 +40,9 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  const body = await res.json();
+  let body;
+  try { body=await res.json(); }
+  catch { throw Object.assign(Error("Account service is temporarily unavailable. Please try again."),{status:503}); }
   if (!res.ok) throw Object.assign(Error(body.error || "Unable to complete that request."), { status: res.status });
   return body;
 }
@@ -107,7 +111,7 @@ function auth(signup = false) {
   if (backendMode === "demo") return demoAuth(signup);
   if (data.user && !signup)
     return `<div class="auth"><span class="eyebrow">Your account</span><h2>${esc(data.user.name)}</h2><p class="muted">${esc(data.user.email)}</p><button class="primary" onclick="go('saved')">View saved plans</button><button onclick="signOut()">Sign out</button></div>`;
-  return `<form class="auth" onsubmit="authenticate(event,${signup})"><span class="eyebrow">Your campus, connected</span><h2>${signup ? "Find your place." : "Welcome back."}</h2><p class="muted">${signup ? "Create your Gather account." : "Sign in to keep your plans together."}</p>${signup ? '<label>Name<input name="name" required maxlength="60" autocomplete="name"></label>' : ""}<label>Email<input name="email" type="email" required autocomplete="email"></label><label>Password<input name="password" type="password" minlength="8" required autocomplete="${signup ? "new-password" : "current-password"}"></label><div id="authError" class="error" role="alert"></div><button class="primary" type="submit">${signup ? "Create account" : "Sign in"}</button><button type="button" onclick="go('${signup ? "login" : "signup"}')">${signup ? "Already have an account? Sign in" : "Create an account"}</button><button type="button" onclick="go('home')">Continue as guest</button></form>`;
+  return `<form class="auth" onsubmit="authenticate(event,${signup})"><span class="eyebrow">Your campus, connected</span><h2>${signup ? "Find your place." : "Welcome back."}</h2><p class="muted">${signup ? "Create your Gather account." : "Sign in to keep your plans together."}</p>${signup ? '<label>Name<input name="name" required maxlength="60" autocomplete="name"></label>' : ""}<label>Email<input name="email" type="email" required autocomplete="email"></label><label>Password<input name="password" type="password" minlength="${signup ? 8 : 1}" required autocomplete="${signup ? "new-password" : "current-password"}"></label><div id="authError" class="error" role="alert"></div><button class="primary" type="submit">${signup ? "Create account" : "Sign in"}</button><button type="button" onclick="go('${signup ? "login" : "signup"}')">${signup ? "Already have an account? Sign in" : "Create an account"}</button><button type="button" onclick="go('home')">Continue as guest</button>${signup ? "" : '<p><a href="/recover">Forgot your password or need account help?</a></p>'}</form>`;
 }
 
 
@@ -115,6 +119,7 @@ async function authenticate(ev, signup) {
   ev.preventDefault();
 
   const button = ev.target.querySelector("[type=submit]");
+  if (button.disabled) return;
   const message = $("authError");
 
   button.disabled = true;
@@ -145,7 +150,10 @@ async function authenticate(ev, signup) {
       return;
     }
 
-    // Successful login: return to the homepage.
+    data.user=result.user;
+    try { await finishSignupPhoto(result.user); }
+    catch { message.textContent="You are signed in. Open Profile settings to finish your photo or profile.";
+      const link=document.createElement("a");link.href="/settings";link.textContent=" Open Profile settings";message.append(link);return; }
     go("home");
 
   } catch (error) {
@@ -169,6 +177,23 @@ async function authenticate(ev, signup) {
   }
 }
 
+async function finishSignupPhoto(user) {
+  let pending;
+  try { pending=JSON.parse(sessionStorage.getItem("gatherPendingSignup") || "null"); } catch { return; }
+  if (!pending || typeof pending.email!=="string" || pending.email.trim().toLowerCase()!==user.email?.trim().toLowerCase()) return;
+  const headers={"Content-Type":"application/json","X-Gather-Account":user.id};
+  const current=await api("/settings",{headers});
+  // Handle legacy drafts only for an incomplete profile; never overwrite a profile
+  // already completed/edited in another browser with stale privacy choices.
+  const legacy=pending.profile && !current.firstName && !current.username ? pending.profile : null;
+  const photoUrl=pending.photoUrl || pending.profile?.photoUrl;
+  if (legacy || photoUrl) await api("/settings",{method:"PUT",headers,body:JSON.stringify({
+    firstName:legacy?.firstName || current.firstName,lastName:legacy?.lastName ?? current.lastName,
+    username:legacy?.username ?? current.username ?? "",isPrivate:legacy?.isPrivate ?? current.isPrivate,
+    categoryIds:legacy?.categoryIds ?? current.categoryIds,...(photoUrl?{photoUrl}:{})})});
+  try { sessionStorage.removeItem("gatherPendingSignup"); } catch {}
+}
+
 async function signOut() {
   try {
     if (backendMode === "supabase") await api("/auth/logout", { method: "POST", body: "{}" });
@@ -181,12 +206,11 @@ const settingsPage = /^\/settings\/?$/.test(location.pathname);
 function renderAccountHeader(name = data.user?.name, photoUrl = data.user?.photoUrl) {
   const button = $("userButton");
   button.classList.toggle("profile-avatar", Boolean(data.user));
-  button.textContent = data.user
+  if (!button.querySelector(".account-avatar-image")) button.textContent = data.user
     ? (name || "Account").trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase()
     : "Sign in";
   button.title = data.user ? name || "My account" : "Sign in";
   globalThis.accountMenu?.update(data.user, signOut, photoUrl);
-  $("sideUserButton").textContent = data.user ? "Account" : "Sign in";
 }
 
 async function prepareProfilePhoto(file) {
@@ -233,7 +257,7 @@ async function loadSettings() {
         <p class="muted">${esc(data.user.email || "")}</p>
         <p>Profile visibility: ${profile.isPrivate ? "Private" : "Public"}</p>
         <h3>Event interests</h3>
-        <p>${interests.length ? interests.map(category => esc(category.EventCatagory || "Unnamed category")).join(", ") : "No interests selected."}</p>
+        <p>${interests.length ? interests.map(category => categoryLabel(category)).join(", ") : "No interests selected."}</p>
         <p id="settingsSaved" role="status" tabindex="-1">${esc(message)}</p>
         <button id="editSettings" class="primary" type="button">Edit profile</button>
         <button type="button" onclick="go('saved')">View saved plans</button>
@@ -302,7 +326,7 @@ async function loadSettings() {
         <fieldset><legend>Event interests</legend>
           <p class="muted">Choose any categories you’re interested in.</p>
           <div class="settings-interests">${profile.categories.map(category =>
-            `<label><input type="checkbox" name="categoryId" value="${esc(category.id)}" ${selected.has(category.id) ? "checked" : ""}> ${esc(category.EventCatagory || "Unnamed category")}</label>`
+          `<label><input type="checkbox" name="categoryId" value="${esc(category.id)}" ${selected.has(category.id) ? "checked" : ""}> ${categoryLabel(category)}</label>`
           ).join("") || "<p>No categories available.</p>"}</div>
         </fieldset>
         <p id="settingsStatus" role="status"></p>
@@ -353,6 +377,254 @@ async function loadSettings() {
   }
 }
 
+const categoryEmojis = {
+  "Academic": "📚",
+  "Arts": "🎨",
+  "Career & Networking": "💼",
+  "Culture": "🌎",
+  "Dance": "💃",
+  "Fitness": "💪",
+  "Food": "🍕",
+  "Games": "🎮",
+  "Music": "🎵",
+  "Outdoors": "🏕️",
+  "Service & Volunteering": "🤝",
+  "Social": "🎉",
+  "Spiritual & Religious": "✨",
+  "Sports": "⚽",
+  "Technology": "💻"
+};
+
+function categoryLabel(category) {
+  const name = category.EventCatagory || "Unnamed category";
+  return `${categoryEmojis[name] || "📅"} ${esc(name)}`;
+}
+
+async function loadSignup() {
+  const app = $("app");
+
+  app.innerHTML = '<div class="auth">Loading signup form…</div>';
+
+  try {
+    const { categories } = await api("/categories");
+
+    const signupData = {
+      firstName: "",
+      lastName: "",
+      username: "",
+      email: "",
+      password: "",
+      photo: null,
+      visibility: "private",
+      categoryIds: []
+    };
+
+    // STEP 1: Account details
+    function showStep1() {
+      app.innerHTML = `
+        <form class="auth" id="signupStep1">
+          <span class="eyebrow">Step 1 of 2</span>
+          <h1>Create your account</h1>
+          <p class="muted">Join Gather and discover what's happening on campus.</p>
+
+          <label>First name
+            <input name="firstName" required maxlength="60"
+              autocomplete="given-name" value="${esc(signupData.firstName)}">
+          </label>
+
+          <label>Last name
+            <input name="lastName" maxlength="60"
+              autocomplete="family-name" value="${esc(signupData.lastName)}">
+          </label>
+
+          <label>Username
+            <input name="username" required minlength="3" maxlength="30"
+              pattern="[A-Za-z0-9_]{3,30}"
+              autocomplete="username" value="${esc(signupData.username)}">
+          </label>
+          <p class="muted">3–30 letters, numbers, or underscores.</p>
+
+          <label>Email
+            <input name="email" type="email" required
+              autocomplete="email" value="${esc(signupData.email)}">
+          </label>
+
+          <label>Password
+            <input name="password" type="password" required minlength="8"
+              autocomplete="new-password">
+          </label>
+
+          <label>Confirm password
+            <input name="confirmPassword" type="password" required minlength="8"
+              autocomplete="new-password">
+          </label>
+
+          <p id="signupError" class="error" role="alert"></p>
+
+          <button class="primary" type="submit">Next: Personalize</button>
+          <button type="button" onclick="go('login')">
+            Already have an account? Sign in
+          </button>
+          <button type="button" onclick="go('home')">
+          Continue as guest
+          </button>
+        </form>
+      `;
+
+      $("signupStep1").addEventListener("submit", event => {
+        event.preventDefault();
+
+        const fields = new FormData(event.currentTarget);
+
+        if (fields.get("password") !== fields.get("confirmPassword")) {
+          $("signupError").textContent = "Passwords do not match.";
+          return;
+        }
+
+        if(!fields.get("firstName").trim()) { $("signupError").textContent="Enter your first name.";return; }
+        signupData.firstName = fields.get("firstName").trim();
+        signupData.lastName = fields.get("lastName").trim();
+        signupData.username = fields.get("username").trim().toLowerCase();
+        signupData.email = fields.get("email").trim();
+        signupData.password = fields.get("password");
+
+        showStep2();
+      });
+    }
+
+    // STEP 2: Profile personalization
+    function showStep2() {
+      const selected = new Set(signupData.categoryIds);
+
+      app.innerHTML = `
+        <form class="auth" id="signupStep2">
+          <span class="eyebrow">Step 2 of 2</span>
+          <h1>Make Gather yours</h1>
+          <p class="muted">Choose your interests to see relevant events first.</p>
+
+          <label>Profile picture (optional)
+            <input name="photo" type="file"
+              accept="image/jpeg,image/png,image/webp">
+          </label>
+          <p class="muted">JPG, PNG, or WebP. Maximum 5 MB.</p>
+
+          <label>Profile visibility
+            <select name="visibility">
+              <option value="private" ${signupData.visibility === "private" ? "selected" : ""}>Private</option>
+              <option value="public" ${signupData.visibility === "public" ? "selected" : ""}>Public</option>
+            </select>
+          </label>
+
+          <fieldset>
+            <legend>What events interest you?</legend>
+            <p class="muted">Select as many categories as you like.</p>
+
+            <div class="settings-interests">
+              ${categories.map(category => `
+                <label>
+                  <input type="checkbox" name="categoryId"
+                    value="${esc(category.id)}"
+                    ${selected.has(category.id) ? "checked" : ""}>
+                    ${categoryLabel(category)}
+                </label>
+              `).join("")}
+            </div>
+          </fieldset>
+
+          <p id="signupError" class="error" role="alert"></p>
+
+          <button class="primary" type="submit">Create my account</button>
+          <button id="signupBack" type="button">Back</button>
+        </form>
+      `;
+
+      $("signupBack").addEventListener("click", () => {
+        const fields = new FormData($("signupStep2"));
+        signupData.visibility = fields.get("visibility");
+        signupData.categoryIds = fields.getAll("categoryId");
+        signupData.photo = fields.get("photo")?.size
+          ? fields.get("photo")
+          : signupData.photo;
+        showStep1();
+      });
+
+      $("signupStep2").addEventListener("submit", async event => {
+        event.preventDefault();
+
+        const form = event.currentTarget;
+        const fields = new FormData(form);
+        const button = form.querySelector('[type="submit"]');
+        const status = $("signupError");
+
+        if (button.disabled) return;
+        button.disabled = true;
+        $("signupBack").disabled = true;
+        status.textContent = "Creating your account…";
+
+        try {
+          signupData.visibility = fields.get("visibility");
+          signupData.categoryIds = fields.getAll("categoryId");
+
+          const file = fields.get("photo");
+          if (file?.size) signupData.photo = file;
+
+          const photoUrl = signupData.photo
+            ? await prepareProfilePhoto(signupData.photo)
+            : undefined;
+
+          const result = await api("/auth/signup", {
+  method: "POST",
+  body: JSON.stringify({
+    name: `${signupData.firstName} ${signupData.lastName}`.trim(),
+    username: signupData.username,
+    email: signupData.email,
+    password: signupData.password,
+    profile: {
+      firstName: signupData.firstName,
+      lastName: signupData.lastName,
+      username: signupData.username,
+      isPrivate: signupData.visibility === "private",
+      categoryIds: signupData.categoryIds
+    }
+  })
+});
+
+          // Clear the in-memory password once the account creation request succeeds.
+          signupData.password = "";
+
+          let photoPending=false;
+          if (photoUrl) {
+            try { sessionStorage.setItem("gatherPendingSignup",JSON.stringify({email:signupData.email,photoUrl}));photoPending=true; }
+            catch { /* Identity/profile fields already persisted; photo can be chosen again in settings. */ }
+          }
+          if (result.user) {
+            try { if(photoPending) await finishSignupPhoto(result.user); }
+            catch { app.innerHTML='<section class="auth"><h1>Account created</h1><p>Finish your photo in Profile settings.</p><a href="/settings">Open Profile settings</a></section>';return; }
+            location.replace("/");
+          } else {
+            app.innerHTML='<section class="auth"><h1>Check your email</h1><p>If this address is eligible, confirm it using the email, then sign in. Your profile choices are saved with a new account.</p>'
+              +(photoUrl&&!photoPending?'<p>You can add your photo in Profile settings after signing in.</p>':'')
+              +'<p><a href="/login">Go to sign in</a> · <a href="/recover">Email didn’t arrive?</a></p></section>';
+          }
+        } catch (error) {
+          status.textContent = error.message;
+          button.disabled = false;
+          if ($("signupBack")) $("signupBack").disabled = false;
+        }
+      });
+    }
+
+    showStep1();
+
+  } catch (error) {
+    app.innerHTML = `<section class="auth">
+      <h1>Unable to load signup</h1>
+      <p role="alert">${esc(error.message)}</p>
+      <button onclick="boot()">Try again</button>
+    </section>`;
+  }
+}
+
 async function boot() {
   try {
     if (location.protocol !== "file:") {
@@ -362,8 +634,13 @@ async function boot() {
     }
     renderAccountHeader();
     if (settingsPage) document.title = "Profile settings | Gather";
-    if (settingsPage && data.user && backendMode === "supabase") await loadSettings();
-    else $("app").innerHTML = auth(signup);
+    if (settingsPage && data.user && backendMode === "supabase") {
+  await loadSettings();
+} else if (signup && backendMode === "supabase") {
+  await loadSignup();
+} else {
+  $("app").innerHTML = auth(signup);
+}
     $("footerMode").textContent = backendMode === "demo" ? "Demo mode · Plans saved in this browser" : "Connected to Supabase";
     window.lucide?.createIcons();
   } catch {

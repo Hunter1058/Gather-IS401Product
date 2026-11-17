@@ -5,11 +5,11 @@ import { readFile } from 'node:fs/promises';
 
 // Run the real page scripts with a small document/HTTP fixture. This exercises
 // page logic and rendered markup; it does not replace a real-browser layout test.
-async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], stateError = false, sessionError = false, href = 'http://fixture/events', navigator = {} } = {}) {
+async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], friendsGoing = [], friendAttendance = {}, friendsGoingError = "", stateError = false, sessionError = false, href = 'http://fixture/events', navigator = {} } = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', open: false, hidden: true,
-      classList: { add() {}, remove() {} }, addEventListener() {}, setAttribute() {}, showModal() { this.open = true; }, close() { this.open = false; } });
+      classList: { add() {}, remove() {}, toggle() {} }, querySelector() { return null; }, addEventListener() {}, setAttribute() {}, showModal() { this.open = true; }, close() { this.open = false; } });
     return elements.get(id);
   };
   const records = { saved: [...saved], rsvp: [...rsvp] }, writes = [];
@@ -26,13 +26,14 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
       let payload;
       if (path === '/api/config') payload = { mode: 'supabase' };
       else if (path === '/api/events') payload = { events: [{ id: '1', name: 'Jazz <friends>', category: 'Arts', categories: ['Arts', 'Spiritual'], location: 'Music Building', date: '2099-11-05', start: null, end: null, price: 0, food: false }] };
+      else if (path === '/api/settings') payload = { categoryIds: [], categories: [] };
       else if (path === '/api/auth/session') {
         if (sessionError) return { ok: false, async json() { return { error: 'Account service unavailable' }; } };
         payload = { user };
       }
       else if (path === '/api/state') {
         if (stateError) return { ok: false, async json() { return { error: 'Plans could not be loaded' }; } };
-        payload = { accountId: user?.id, state: records };
+        payload = { accountId: user?.id, state: { ...records, friendsGoing, friendAttendance, friendsGoingError } };
       } else {
         if (held) await new Promise(resolve => { release = resolve; });
         if (failure) { failure = false; return { ok: false, async json() { return { error: 'Save failed' }; } }; }
@@ -47,9 +48,11 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
     },
   });
   context.window = context;
-  vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
-  vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
-  vm.runInContext(await readFile(new URL('../public/events.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/friend-attendance.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/smart-search.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/events.js', import.meta.url), 'utf8'), context);
   await new Promise(resolve => setImmediate(resolve));
   return { context, element, records, writes, run: code => vm.runInContext(code, context), fail() { failure = true; }, hold() { held = true; }, release() { held = false; release(); } };
 }
@@ -64,6 +67,48 @@ test('page restores account plans, escapes titles and renders styled share and p
   assert.match(html, /data-lucide="share-2"/);
   assert.match(html, /Time TBA/);
   assert.equal(page.run('data.saved.includes("stale-demo")'), false);
+});
+
+test('event list and details show a bounded, escaped friend attendance summary without requiring my own RSVP', async () => {
+  const page=await pageFixture({friendsGoing:['1'],friendAttendance:{'1':{count:'3',friends:[
+    {id:'b',label:'Blair <friend>'},{id:'c',label:'Casey & friends'},
+  ]}}});
+  assert.deepEqual(page.records.rsvp,[]);
+  assert.match(page.element('results').innerHTML,/3 friends going/);
+  assert.match(page.element('results').innerHTML,/Blair &lt;friend&gt;, Casey &amp; friends · \+1 more/);
+  page.run('openEvent("1")');
+  assert.match(page.element('modal').innerHTML,/3 friends going/);
+  page.run('setMode("friendsGoing")');
+  assert.match(page.element('results').innerHTML,/Jazz &lt;friends&gt;/);
+});
+
+test('guest, unavailable state and wrong-event data never show cached attendance as a confirmed result', async () => {
+  const friendAttendance={'1':{count:'1',friends:[{id:'b',label:'PRIVATE CACHED NAME'}]}};
+  for(const settings of [{user:null},{stateError:true},{sessionError:true},{friendsGoingError:'Unavailable'}]){
+    const page=await pageFixture({...settings,friendAttendance});
+    assert.doesNotMatch(page.element('results').innerHTML,/PRIVATE CACHED NAME|data-friend-attendance/);
+    assert.match(page.element('results').innerHTML,/Jazz &lt;friends&gt;/);
+  }
+  const other=await pageFixture({friendAttendance:{'2':friendAttendance['1']}});
+  assert.doesNotMatch(other.element('results').innerHTML,/data-friend-attendance/);
+});
+
+test('missing attendance shows a notice and personal controls remain usable; empty success shows no badge',async()=>{
+  const unavailable=await pageFixture({friendsGoingError:'Attendance unavailable'});
+  assert.match(unavailable.element('results').innerHTML,/Friends’ attendance could not be loaded/);
+  await unavailable.run('bookmark("1")');assert.deepEqual(unavailable.records.saved,['1']);
+  const empty=await pageFixture();assert.doesNotMatch(empty.element('results').innerHTML,/event-friend-attendance|event-friend-notice/);
+});
+
+test('an expired or changed account clears attendance immediately after a rejected action',async()=>{
+  for(const status of [401,409]){
+    const page=await pageFixture({friendAttendance:{'1':{count:'1',friends:[{id:'b',label:'Previous account friend'}]}}});
+    assert.match(page.element('results').innerHTML,/Previous account friend/);
+    page.context.fetch=async()=>({ok:false,status,async json(){return {error:'Your account changed. Reload before saving.'};}});
+    await page.run('bookmark("1")');
+    assert.doesNotMatch(page.element('results').innerHTML,/Previous account friend|data-friend-attendance/);
+    assert.deepEqual(page.records.saved,[]);
+  }
 });
 
 test('list clicks persist individual states, never open details, and share filter state', async () => {
@@ -194,4 +239,67 @@ test('mode switches update the selected toolbar chip', async () => {
   assert.match(page.element('toolbar').innerHTML, /class="active" aria-pressed="true" onclick="setMode\('rsvp'\)/);
   page.run('setMode("past")');
   assert.match(page.element('toolbar').innerHTML, /class="active" aria-pressed="true" onclick="setMode\('past'\)/);
+  for (const mode of ['saved', 'friendsGoing']) {
+    page.run(`setMode("${mode}")`);
+    assert.ok(page.element('toolbar').innerHTML.includes(`class="active" aria-pressed="true" onclick="setMode('${mode}')"`));
+  }
+  assert.doesNotMatch(page.element('toolbar').innerHTML, /setFilter\('(bookmarked|friendsGoing)'/);
+});
+
+test('Bookmarked button combines with filters and updates after unsaving', async () => {
+  const page = await pageFixture({ saved: ['1'] });
+  page.run('events.push({ ...events[0], id: "2", name: "Unsaved event" }); setMode("saved")');
+  assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/);
+  assert.doesNotMatch(page.element('results').innerHTML, /Unsaved event/);
+  page.run('setFilter("q", "Unsaved")');
+  assert.match(page.element('results').innerHTML, /No events match/);
+  page.run('setFilter("q", ""); view = "calendar"');
+  assert.equal(page.run('filteredEvents().length'), 1);
+  page.run('view = "list"');
+  await page.run('bookmark("1")');
+  assert.match(page.element('results').innerHTML, /No events match/);
+  page.run('clearFilters()');
+  page.run('setMode("upcoming")');
+  assert.match(page.element('results').innerHTML, /Unsaved event/);
+});
+
+test('Friends going button switches modes and applies to calendar', async () => {
+  const page = await pageFixture({ friendsGoing: ['1'], saved: ['2'] });
+  assert.match(page.element('toolbar').innerHTML, /Friends going/);
+  page.run('events.push({ ...events[0], id: "2", name: "Other event" }); setMode("friendsGoing")');
+  assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/);
+  assert.doesNotMatch(page.element('results').innerHTML, /Other event/);
+  page.run('setMode("saved")');
+  assert.match(page.element('results').innerHTML, /Other event/);
+  page.run('setMode("friendsGoing"); view = "calendar"');
+  assert.equal(page.run('filteredEvents().length'), 1);
+  page.run('clearFilters()');
+  page.run('setMode("upcoming")');
+  assert.equal(page.run('filteredEvents().length'), 2);
+});
+
+test('friends filter explains guest access and attendance load errors', async () => {
+  const guest = await pageFixture({ user: null });
+  guest.run('setMode("friendsGoing")');
+  assert.match(guest.element('results').innerHTML, /Sign in to see events your friends/);
+  const broken = await pageFixture({ friendsGoingError: 'Attendance unavailable' });
+  broken.run('setMode("friendsGoing")');
+  assert.match(broken.element('results').innerHTML, /Attendance unavailable/);
+  broken.run('setMode("upcoming")');
+  assert.match(broken.element('results').innerHTML, /Jazz &lt;friends&gt;/);
+});
+
+
+test('view toggle updates its label in both directions and preserves filters', async () => {
+  const page = await pageFixture();
+  page.run('setFilter("q", "Jazz")');
+  assert.match(page.element('toolbar').innerHTML, /Calendar view/);
+  page.run('toggleView()');
+  assert.match(page.element('toolbar').innerHTML, /List view/);
+  assert.doesNotMatch(page.element('toolbar').innerHTML, /Calendar view/);
+  assert.match(page.element('toolbar').innerHTML, /value="Jazz"/);
+  page.run('toggleView()');
+  assert.match(page.element('toolbar').innerHTML, /Calendar view/);
+  assert.doesNotMatch(page.element('toolbar').innerHTML, /List view/);
+  assert.match(page.element('toolbar').innerHTML, /value="Jazz"/);
 });

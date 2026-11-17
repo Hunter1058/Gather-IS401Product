@@ -8,7 +8,7 @@ test('Saved deep link filters to bookmarks and removes a card after unsaving', a
   const element = id => {
     if (!elements.has(id)) elements.set(id, {
       innerHTML: '', textContent: '', hidden: true, open: false,
-      classList: { add() {}, remove() {} }, setAttribute() {}, addEventListener() {},
+      classList: { add() {}, remove() {}, toggle() {} }, querySelector() { return null; }, setAttribute() {}, addEventListener() {},
     });
     return elements.get(id);
   };
@@ -31,8 +31,9 @@ test('Saved deep link filters to bookmarks and removes a card after unsaving', a
       let body;
       if (path === '/api/config') body = { mode: 'supabase' };
       else if (path === '/api/events') body = { events };
+      else if (path === '/api/settings') body = { categoryIds: [], categories: [] };
       else if (path === '/api/auth/session') body = { user: { id: 'a', name: 'Student' } };
-      else if (path === '/api/state') body = { accountId: 'a', state: { saved, rsvp: [] } };
+      else if (path === '/api/state') body = { accountId: 'a', state: { saved, rsvp: [], friendsGoing: ['2'], friendAttendance: {'2':{count:'1',friends:[{id:'b',label:'Blair <friend>'}]}} } };
       else if (path === '/api/events/2/bookmark') {
         const { bookmarked } = JSON.parse(options.body);
         saved = bookmarked ? ['2'] : [];
@@ -42,15 +43,24 @@ test('Saved deep link filters to bookmarks and removes a card after unsaving', a
     },
   });
   context.window = context;
-  vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
-  vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
-  vm.runInContext(await readFile(new URL('../public/friend-actions.js', import.meta.url), 'utf8'), context);
-  // Expose the real boot promise so this test waits for state loading/rendering.
-  const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
-    .replace(/boot\(\);\s*$/, 'globalThis.bootPromise = boot();');
+
+vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/friend-attendance.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/friend-actions.js', import.meta.url), 'utf8'), context);
+
+// Load smart search before app.js
+vm.runInContext(await readFile(new URL('../public/smart-search.js', import.meta.url), 'utf8'), context);
+
+// Expose the real boot promise so this test waits for state loading/rendering.
+const source = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
+  .replace(/boot\(\);\s*$/, 'globalThis.bootPromise = boot();');
+
   vm.runInContext(source, context);
   await context.bootPromise;
   assert.equal(vm.runInContext('mode', context), 'saved');
+  assert.match(element('app').innerHTML, /1 friend going/);
+  assert.match(element('app').innerHTML, /Blair &lt;friend&gt;/);
   assert.match(element('app').innerHTML, /data-event-id="2"/);
   assert.doesNotMatch(element('app').innerHTML, /data-event-id="1"/);
   vm.runInContext('filters.category = "Spiritual"; filters.spiritual = true; render();', context);

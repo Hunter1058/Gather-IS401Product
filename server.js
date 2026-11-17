@@ -7,13 +7,15 @@
  */
 
 import http from "node:http";
+import { authObject, emailInput, passwordInput, signupProfile, providerFailure, authLimiter, authFailure } from "./lib/auth-input.js";
+import { passwordRecovery } from "./lib/password-recovery.js";
 import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 import { authSessions } from "./lib/auth-session.js";
 import { isSameOrigin } from "./lib/request-origin.js";
-import { people, userId, friendBody, sendRequest, cancelRequest, removeFriend } from "./lib/friends.js";
+import { people, userId, friendBody, sendRequest, cancelRequest, removeFriend, respondRequest, connections } from "./lib/friends.js";
 import { planInput, profileId, readPlans, writePlan } from "./lib/event-plans.js";
 
 // Server and Supabase configuration. Supabase credentials must be provided together.
@@ -47,13 +49,10 @@ const publicClient = configured ? makeClient() : null;
 
 // Request-scoped clients restore verified sessions on any Vercel instance.
 const sessionCookies = authSessions(makeClient, { secure: production });
-// Best-effort per-worker throttle; production-wide abuse limits belong at the
-// platform/Supabase layer rather than relying on this process-local counter.
-const attempts = new Map();
-setInterval(() => {
-  for (const [id, attempt] of attempts)
-    if (Date.now() - attempt.since > 15 * 60 * 1000) attempts.delete(id);
-}, 60000).unref();
+const limitAuth = authLimiter();
+const recovery = passwordRecovery({makeClient,sessionCookies,secure:production,port,limit:limitAuth});
+// Production must never offer browser-only demo accounts after a misconfiguration.
+if (production && !configured) throw Error("Configure Supabase before deploying Gather.");
 
 const userView = (u) =>
   u ? {
@@ -85,6 +84,8 @@ async function body(req) {
 // Main HTTP server: static files, API routes, authentication, and state storage.
 export const server = http.createServer(async (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   try {
     const url = new URL(req.url, "http://localhost");
@@ -103,7 +104,7 @@ export const server = http.createServer(async (req, res) => {
       if (route === "/events" && req.method === "GET") {
         const { data, error } = await publicClient
           .from("Events")
-          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, EventImage, CampusLocation, categoryLinks:Event_Category_Linking_Table(category:EventCategory(EventCatagory))")          .order("EventDate", { ascending: true })
+          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, EventImage, CampusLocation, categoryLinks:Event_Category_Linking_Table(IsPrimary, category:EventCategory(EventCatagory, EventStockImage))")
           .limit(500);
         
         if (error) throw error;
@@ -127,17 +128,30 @@ export const server = http.createServer(async (req, res) => {
             const categories = [...new Set(links.map(link => link.category?.EventCatagory)
               .filter(value => typeof value === "string" && value.trim())
               .map(value => value.trim()))].sort();
+            const primaryLink = links.find(link => link.IsPrimary) || links[0];
+            const primaryCategory = primaryLink?.category?.EventCatagory
+              || categories[0]
+              || "Campus event";
+
+            const stockImagePath = primaryLink?.category?.EventStockImage;
+
+            const stockImageUrl = stockImagePath
+              ? publicClient.storage
+                  .from("Stock_Images")
+                  .getPublicUrl(stockImagePath).data.publicUrl
+              : null;
             return {
               id: String(r.EventID),
               name: r.EventName || "Campus event",
-              category: categories[0] || "Campus event",
+              category: primaryCategory,
               categories,
               location: r.EventLocation,
               campusLocation: r.CampusLocation,
               date: r.EventDate,
               start: r.EventTime,
               description: r.EventDescription,
-              imageUrl: r.EventImage || null, 
+              imageUrl: r.EventImage || stockImageUrl || null,
+              imageType: r.EventImage ? "flyer" : "stock",
               end: null,
               club: null,
               major: null,
@@ -149,32 +163,151 @@ export const server = http.createServer(async (req, res) => {
           }),
         });
       }
+      // Public event categories for the signup interests form.
+if (route === "/categories" && req.method === "GET") {
+  const client = makeClient();
+
+  const { data: categories, error } = await client
+    .from("EventCategory")
+    .select("id:EventCatID::text, EventCatagory")
+    .order("EventCatagory");
+
+  if (error) throw error;
+
+  return json(res, 200, { categories });
+}
+
+  // Check username availability before personalization.
+if (route === "/auth/username-available" && req.method === "POST") {
+  const b = await body(req);
+  const username = typeof b.username === "string"
+    ? b.username.trim().replace(/^@/, "").toLowerCase()
+    : "";
+
+  if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+    return json(res, 400, {
+      error: "Username must be 3–30 letters, numbers, or underscores."
+    });
+  }
+
+  const { data: available, error } = await publicClient.rpc(
+    "is_username_available",
+    { requested_username: username }
+  );
+
+  if (error) {
+    return json(res, 503, {
+      error: "Unable to check username availability."
+    });
+  }
+
+  return json(res, 200, { available });
+}
 
       // Login and account creation through Supabase Auth.
       if (["/auth/login", "/auth/signup"].includes(route) && req.method === "POST") {
-        const ip = req.socket.remoteAddress;
-        const a = attempts.get(ip) || { count: 0, since: Date.now() };
-        if (Date.now() - a.since > 15 * 60 * 1000) { a.count = 0; a.since = Date.now(); }
-        a.count++;
-        attempts.set(ip, a);
-        if (a.count > 20) return json(res, 429, { error: "Too many attempts." });
 
-        const b = await body(req);
-        if (typeof b.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b.email) || typeof b.password !== "string" || b.password.length < 8)
-          return json(res, 400, { error: "Enter a valid email and password." });
+const signingUp = route === "/auth/signup";
 
-        const client = makeClient();
-        const credentials = { email: b.email, password: b.password };
-        const result = route === "/auth/signup"
-            ? await client.auth.signUp({ ...credentials, options: { data: { name: b.name?.trim() } } })
-            : await client.auth.signInWithPassword(credentials);
+const input = authObject(
+  await body(req),
+  signingUp
+    ? ["email", "password", "name", "profile", "username"]
+    : ["email", "password"]
+);
 
-        if (result.error) return json(res, 400, { error: result.error.message });
-        if (!result.data.session) return json(res, 200, { user: null, message: "Check your email." });
+const email = emailInput(input.email);
+const password = passwordInput(input.password, signingUp);
 
-        sessionCookies.save(res, result.data.session);
-        return json(res, 200, { user: userView(result.data.user) });
+if (
+  input.name !== undefined &&
+  (typeof input.name !== "string" || input.name.trim().length > 121)
+) {
+  throw authFailure("Enter a valid name.");
+}
+
+const profile = signingUp ? signupProfile(input.profile) : undefined;
+
+limitAuth(req, signingUp ? "signup" : "login", email);
+
+const client = makeClient();
+
+// Check username availability before signup.
+if (signingUp) {
+  const username = typeof profile?.username === "string"
+  ? profile.username.trim().replace(/^@/, "").toLowerCase()
+  : "";
+
+  if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+    return json(res, 400, {
+      error: "Username must be 3–30 letters, numbers, or underscores."
+    });
+  }
+
+  const { data: available, error: checkError } =
+    await client.rpc("is_username_available", {
+      requested_username: username
+    });
+
+  if (checkError) {
+    return json(res, 503, {
+      error: "Unable to check username availability. Try again."
+    });
+  }
+
+  if (!available) {
+    return json(res, 409, {
+      error: "That username is already taken. Please choose another."
+    });
+  }
+}
+
+const result = signingUp
+  ? await client.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name: input.name?.trim(),
+          ...(profile ? { gather_signup_profile: profile } : {})
+        }
       }
+    })
+  : await client.auth.signInWithPassword({ email, password });
+
+providerFailure(result.error, !signingUp);
+
+if (!result.data?.session) {
+  if (!signingUp) {
+    throw authFailure(
+      "Account service is temporarily unavailable. Please try again.",
+      503
+    );
+  }
+
+  return json(res, 200, {
+    user: null,
+    message: "If this address is eligible, check your email to confirm it, then sign in."
+  });
+}
+
+if (!result.data.user) {
+  throw authFailure(
+    "Account service is temporarily unavailable. Please try again.",
+    503
+  );
+}
+
+sessionCookies.save(res, result.data.session);
+
+return json(res, 200, {
+  user: userView(result.data.user)
+});
+
+      }
+
+      if (["/auth/forgot-password","/auth/resend-confirmation"].includes(route) || route.startsWith("/auth/recovery/"))
+        return await recovery.handle(route,req,res,body,json);
 
       // Sign-out invalidates the server session and clears the browser cookie.
       if (route === "/auth/logout" && req.method === "POST") {
@@ -184,6 +317,7 @@ export const server = http.createServer(async (req, res) => {
           if (error) throw Object.assign(Error("Unable to sign out. Try again."), { status: 503 });
         }
         sessionCookies.clear(res);
+        recovery.clear(res);
         return json(res, 200, { ok: true });
       }
 
@@ -196,6 +330,7 @@ export const server = http.createServer(async (req, res) => {
           return json(res, 503, { error: "Account deletion is unavailable right now." });
 
         const input = await body(req);
+        limitAuth(req,"delete-verification",session.user.id);
         if (!input || typeof input.password !== "string" || !input.password ||
             input.password.length > 4096 || input.confirmation !== "DELETE")
           return json(res, 400, { error: "Enter your password and type DELETE to confirm." });
@@ -215,6 +350,7 @@ export const server = http.createServer(async (req, res) => {
         const { error } = await admin.auth.admin.deleteUser(session.user.id, false);
         if (error) return json(res, 503, { error: "Could not delete your account. Please try again." });
         sessionCookies.clear(res);
+        recovery.clear(res);
         return json(res, 200, { ok: true });
       }
 
@@ -290,11 +426,19 @@ export const server = http.createServer(async (req, res) => {
         const expected = req.headers["x-gather-account"];
         if ((expected && expected !== session.user.id) || (req.method !== "GET" && expected !== session.user.id))
           return json(res, 409, { error: "Your account changed. Reload the page before changing friendships.", code: "ACCOUNT_CHANGED" });
+        const shared = /^\/friends\/people\/([^/]+)\/connections$/.exec(route);
+        if (shared && req.method === "GET")
+          return json(res, 200, { accountId: session.user.id, ...await connections(session.client, session.user.id, shared[1], url.searchParams) });
         if (route === "/friends/people" && req.method === "GET")
           return json(res, 200, { accountId: session.user.id, ...await people(session.client, url.searchParams) });
         if (route === "/friends/requests" && req.method === "POST") {
           const recipient = friendBody(await body(req), true);
           return json(res, 200, { accountId: session.user.id, person: await sendRequest(session.client, session.user.id, recipient) });
+        }
+        const response = /^\/friends\/requests\/([^/]+)\/(accept|deny)$/.exec(route);
+        if (response && req.method === "POST") {
+          friendBody(await body(req));
+          return json(res, 200, { accountId: session.user.id, person: await respondRequest(session.client, session.user.id, response[1], response[2] === "accept") });
         }
         const cancellation = /^\/friends\/requests\/([^/]+)$/.exec(route);
         if (cancellation && req.method === "DELETE") {
@@ -344,15 +488,25 @@ export const server = http.createServer(async (req, res) => {
     // Non-API requests serve files from the public directory.
     // Dedicated page routes follow the same static HTML mapping.
     if (!["GET", "HEAD"].includes(req.method)) return json(res, 405, { error: "Method not allowed." });
-    const pageRoute = /^\/(events|login|signup|settings)\/?$/.exec(url.pathname);
+    const pageRoute = /^\/(events|login|signup|settings|recover)\/?$/.exec(url.pathname);
     if (pageRoute) url.pathname = `/${pageRoute[1] === "settings" ? "login" : pageRoute[1]}.html`;
-    const path = resolve(root, "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname));
+    let decodedPath;
+    try { decodedPath=decodeURIComponent(url.pathname); }
+    catch { throw authFailure("Invalid page path."); }
+    const path = resolve(root, "." + (decodedPath === "/" ? "/index.html" : decodedPath));
     if (!path.startsWith(root + "/")) return json(res, 403, { error: "Forbidden" });
+    const recoveryPage=path === resolve(root,"recover.html");
+    if (recoveryPage) {
+      res.setHeader("Cache-Control","no-store");
+      res.setHeader("Referrer-Policy","no-referrer");
+      res.setHeader("X-Frame-Options","DENY");
+      res.setHeader("Content-Security-Policy","default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    }
 
     try {
       const content = await readFile(path);
       const mime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png" }[extname(path)] || "application/octet-stream";
-      res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-cache" });
+      res.writeHead(200, { "Content-Type": mime, "Cache-Control": recoveryPage ? "no-store" : "no-cache" });
       res.end(req.method === "HEAD" ? undefined : content);
     } catch {
       return json(res, 404, { error: "Page not found." });

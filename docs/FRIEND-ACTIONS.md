@@ -230,3 +230,11 @@ could not launch here because Chromium is unavailable; run it locally. The SQL
 rehearsal and real-account acceptance steps above still need execution in your
 Supabase project. No claim is made that production or the new SQL has already
 been verified. The original foundation SQL was not changed or rerun.
+
+### Friends tabs and suggestions
+
+Apply [the friend directory migration](../supabase/migrations/20261110000500_friend_directory.sql) after the existing friendship and people migrations. It adds `get_friend_directory`; the Friends page requires this function for its three tabs. Restart the Node server after updating the application.
+
+My Friends lists accepted friendships. Search Friends searches names and usernames and ranks available people by the sum of shared going RSVPs and mutual friends, showing the reason on each suggestion. Existing friends and pending requests are excluded. Requests separates incoming requests (Accept / Deny) from sent requests (Cancel). Filtering and ranking happen before pagination. Recommendations return aggregate counts, keeping other users’ event lists and friend identities out of the response; existing table permissions remain intact.
+
+Validation: `npm test` and `npm run test:friends:browser` cover directory filtering, recommendations, requests, account checks, keyboard tabs, search, and mobile layout.

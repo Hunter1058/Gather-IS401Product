@@ -213,3 +213,21 @@ git push -u origin feature/event-rsvp-bookmarks
 Open a pull request into the team's main branch and review the Share integration
 with its owner. The local packaging commit uses a neutral local-only identity;
 the commands above use your configured Git identity in the actual repository.
+
+## Friends going filter
+
+Apply [the friends going migration](../supabase/migrations/20261109000000_friends_going.sql)
+to existing databases before using the **Friends going** button. New databases
+using the complete schema already include the function.
+
+The filter matches events with a confirmed RSVPGoing=true from at least one
+user linked by a Friends row whose UserID is the signed-in account and whose
+FriendUserID is the attendee. Self-links and canceled RSVPs do not match.
+The function returns only distinct event IDs, scoped through auth.uid(), and is
+callable only by authenticated accounts. General RSVP reads remain owner-only.
+Event IDs are returned as text to preserve bigint precision.
+
+The existing Friends screen still shows fictional demo profiles; its Add friend
+buttons do not create database friendship links. This filter uses actual Friends
+database rows. If attendance cannot load, the filter displays an error while
+personal bookmarks and RSVPs remain available. Reload to refresh attendance.

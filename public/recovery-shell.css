@@ -1,0 +1,11 @@
+/* Recovery uses the site's shared theme; these rules only adapt its shell. */
+.recovery-page .recovery-brand {
+  text-decoration: none;
+  color: inherit;
+}
+.recovery-page .drawer {
+  max-width: calc(100vw - 32px);
+}
+.recovery-page .auth {
+  overflow-wrap: anywhere;
+}
