@@ -174,7 +174,7 @@ function rsvp(id) { return plans.set("rsvp", id); }
 function planButton(kind, event, compact = false) {
   if (kind === "rsvp") return goingButton(event);
   const selected = data.saved.includes(event.id);
-  return `<button type="button" class="event-bookmark" data-plan-kind="bookmark" data-event-id="${esc(event.id)}" aria-label="${selected ? "Remove bookmark for" : "Bookmark"} ${esc(event.name)}" aria-pressed="${selected}" onclick="bookmark('${event.id}')">${icon(selected ? "bookmark-check" : "bookmark")}${compact ? "" : `<span>${selected ? "Saved" : "Save"}</span>`}</button>`;
+  return `<button type="button" class="event-bookmark" data-plan-kind="bookmark" data-event-id="${esc(event.id)}" aria-label="${selected ? "Remove bookmark for" : "Bookmark"} ${esc(event.name)}" aria-pressed="${selected}" onclick="bookmark('${event.id}')">${icon(selected && page !== "home" ? "bookmark-check" : "bookmark")}${compact ? "" : `<span>${selected ? "Saved" : "Save"}</span>`}</button>`;
 }
 function goingButton(event) {
   const selected = data.rsvp.includes(event.id);
@@ -236,14 +236,12 @@ function listEvents() {
     .sort(personalizedEventSort);
 }
 
-function card(event) {
+function card(event, { compact = false } = {}) {
   return `<article class="card event-card" data-event-id="${esc(event.id)}" tabindex="0" aria-label="View details for ${esc(event.name)}" onclick="activateEventCard(event, '${event.id}')" onkeydown="activateEventCard(event, '${event.id}')">
     ${poster(event)}
     <div class="card-body">
       <div class="event-card-heading">
-        <div class="row">${categoryTags(event)}
-          ${eventAdmissionTag(event)}
-        </div>
+        ${compact ? "" : `<div class="row">${categoryTags(event)}${eventAdmissionTag(event)}</div>`}
         ${planButton("bookmark", event, true)}
       </div>
       <h3><button type="button" class="event-title" onclick="openEvent('${event.id}')" aria-label="View details for ${esc(event.name)}">${esc(event.name)}</button></h3>
@@ -251,11 +249,12 @@ function card(event) {
         <span>${icon("clock")} ${pretty(event.date)} · ${time(event.start)}${event.end ? "–" + time(event.end) : ""}</span>
         <span>${icon("map-pin")} ${eventLocationLink(event)}</span>
       </div>
+      ${compact ? "" : `
       ${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}
       <div class="card-actions event-card-actions">
         ${planButton("rsvp", event)}
         ${shareButton(event)}
-      </div>
+      </div>`}
     </div>
   </article>`;
 }
@@ -381,13 +380,18 @@ function updateResults() {
   refreshPlanControls();
 }
 function moveSlide(n) {
-  slide = (slide + n + 3) % 3;
+  const count = featuredEvents().length;
+  if (count < 2) return;
+  slide = ((slide % count) + n + count) % count;
   renderHero();
 }
 function renderHero() {
-  if ($("heroHost")) $("heroHost").innerHTML = hero();
+  const host = $("heroHost");
+  if (!host) return;
+  const control = host.contains(document.activeElement) ? document.activeElement.id : "";
+  host.innerHTML = hero();
   icons();
-  refreshPlanControls();
+  if (control) $(control)?.focus();
 }
 setInterval(() => {
   if (
@@ -831,38 +835,56 @@ function poster(e, cls = "") {
       <strong>${esc((e.poster || "Campus event").replaceAll(" / ", " · "))}</strong>
     </div>`;
 }
-function hero() {
-  let upcoming = events.filter((e) => !ended(e)).slice(0, 3);
-  let e = upcoming[slide % upcoming.length];
-  if (!e)
-    return '<div class="empty"><h2>A little more campus in your life.</h2><p>New events will appear here when they’re available.</p></div>';
-  const imageUrl = e.imageUrl?.trim();
-  const featuredArt = imageUrl && /^https?:\/\//i.test(imageUrl)
-  ? `<img class="hero-flyer" src="${esc(imageUrl)}" alt="">`
-  : `<span class="bigmark">${icon(categoryIcon(e))}</span>`;
-  return `<div class="hero"><div class="hero-copy"><span class="eyebrow">${icon("sparkles")} Make room for a good time</span><h1>Your next favorite<br>campus memory.</h1><p class="muted">Find something you love.<br>Bring someone along.</p><button class="primary" style="margin-top:16px" onclick="go('list')">Explore events ${icon("arrow-up-right")}</button></div><div class="hero-art ${categoryClass(e)}" tabindex="0" aria-label="View details for ${esc(e.name)}" onclick="activateEventCard(event, '${e.id}')" onkeydown="activateEventCard(event, '${e.id}')">${featuredArt}<small>FEATURED ON CAMPUS</small><b>${esc(e.name)}</b><p>${pretty(e.date)} · ${time(e.start)}<br>${eventLocationLink(e)}</p><div class="hero-event-actions">${goingButton(e)}${shareButton(e)}</div><div class="row hero-navigation"><div class="hero-controls"><button aria-label="Previous flyer" onclick="moveSlide(-1)">${icon("chevron-left")}</button><span class="count">${(slide % upcoming.length) + 1} / ${upcoming.length}</span><button aria-label="Next flyer" onclick="moveSlide(1)">${icon("chevron-right")}</button><button aria-label="${paused ? "Play" : "Pause"} slideshow" onclick="paused=!paused;renderHero()">${icon(paused ? "play" : "pause")}</button></div></div></div></div>`;
+function featuredEvents() {
+  return events.filter((event) => !ended(event)).slice(0, 3);
 }
+
+function hero() {
+  const upcoming = featuredEvents();
+  const index = slide % upcoming.length;
+  const event = upcoming[index];
+  if (!event) return '<div class="empty"><h2>No upcoming events yet</h2><p>Check back for new campus events.</p></div>';
+
+  const imageUrl = event.imageUrl?.trim();
+  const artwork = imageUrl && /^https?:\/\//i.test(imageUrl)
+    ? `<img src="${esc(imageUrl)}" alt="">`
+    : icon(categoryIcon(event));
+  return `<section class="discover-feature" aria-label="Featured events">
+    <div class="discover-feature-art ${categoryClass(event)}" aria-hidden="true">${artwork}</div>
+    <div class="discover-feature-copy">
+      <small>Featured on campus</small>
+      <h2>${esc(event.name)}</h2>
+      <p>${pretty(event.date)} · ${time(event.start)}<br>${eventLocationLink(event)}</p>
+      <button type="button" class="primary discover-view-event" onclick="openEvent(${esc(JSON.stringify(event.id))})">View event ${icon("arrow-right")}</button>
+      ${upcoming.length > 1 ? `<div class="hero-controls" role="group" aria-label="Slideshow controls">
+        <button type="button" id="previousFeatured" aria-label="Previous event" onclick="moveSlide(-1)">${icon("chevron-left")}</button>
+        <span class="count">${index + 1} / ${upcoming.length}</span>
+        <button type="button" id="nextFeatured" aria-label="Next event" onclick="moveSlide(1)">${icon("chevron-right")}</button>
+        <button type="button" id="toggleFeatured" aria-label="${paused ? "Play" : "Pause"} slideshow" onclick="paused = !paused; renderHero()">${icon(paused ? "play" : "pause")}</button>
+      </div>` : ""}
+    </div>
+  </section>`;
+}
+
 function home() {
-  let upcoming = events.filter((e) => !ended(e)),
-    recommended = upcoming
-      .filter((e) => eventCategories(e).some(category => data.interests.includes(category)))
-      .slice(0, 4);
-  if (!recommended.length) recommended = upcoming.slice(0, 4);
-  let saved = upcoming.filter((e) => data.saved.includes(e.id)).slice(0, 3);
-  return `<div class="welcome"><div class="row between"><span class="eyebrow">${icon("sparkles")} A little more campus in your life</span><span class="muted">${today.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span></div><h1>Good things are happening.</h1><p class="muted">Discover your next plan, find your people, and make the most of BYU.</p></div><div class="home-layout"><div><div id="heroHost">${hero()}</div><div class="quick"><button onclick="go('list')"><span class="symbol">${icon("compass")}</span><span><b>Explore events</b><small>Find your next thing</small></span></button><button onclick="go('calendar')"><span class="symbol">${icon("calendar-days")}</span><span><b>Plan your month</b><small>See what’s coming up</small></span></button><button onclick="go('saved')"><span class="symbol">${icon("bookmark")}</span><span><b>Your saved plans</b><small>Keep a good idea</small></span></button></div><div class="row between section-head"><h2>Picked for you</h2><button onclick="go('friends')">Edit interests ${icon("arrow-right")}</button></div><div class="grid">${recommended.map(card).join("") || empty()}</div><div class="row between section-head"><h2>More to look forward to</h2><button onclick="go('list')">View all ${icon("arrow-right")}</button></div><div class="list">${
-    upcoming
-      .filter((e) => !recommended.includes(e))
-      .slice(0, 3)
-      .map(card)
-      .join("") || '<p class="muted">You’re all caught up.</p>'
-  }</div></div><aside class="sidebar"><section class="glass-panel panel-pad"><h2 class="side-title">${icon("bookmark")} Your next plans</h2><p>Good ideas you kept for later.</p>${saved.map((e) => `<div class="mini-event" tabindex="0" aria-label="View details for ${esc(e.name)}" onclick="activateEventCard(event, '${e.id}')" onkeydown="activateEventCard(event, '${e.id}')"><span class="date-chip">${new Date(e.date + "T12:00").toLocaleDateString("en-US", { month: "short" })}<b>${Number(e.date.slice(-2))}</b></span><div><button onclick="openEvent('${e.id}')">${esc(e.name)}</button><p>${time(e.start)} · ${eventLocationLink(e)}</p><div class="row mini-event-actions">${goingButton(e)}${shareButton(e)}</div></div></div>`).join("") || '<p class="notice">Tap a bookmark on any event to keep it here.</p>'}<button class="primary" onclick="go('saved')">View saved events ${icon("arrow-right")}</button></section><section class="glass-panel panel-pad"><h2 class="side-title">${icon("users")} Better together</h2><div class="friend-preview">${data.friends
-    .slice(0, 5)
-    .map(
-      (n) => `<span class="avatar" aria-label="${esc(n)}">${esc(n[0])}</span>`,
-    )
-    .join(
-      "",
-    )}</div><p>Find familiar faces at something new.</p><button onclick="go('friends')">Your friends & interests ${icon("arrow-up-right")}</button></section><section class="glass-panel panel-pad"><span class="eyebrow">Make it your campus</span><h2 style="margin-top:13px">A little curiosity<br>goes a long way.</h2><p>Music, service, new ideas. There’s a place for you here.</p><div class="chips">${data.interests.map((c) => `<span class="tag">${esc(c)}</span>`).join("")}</div></section></aside></div>`;
+  const upcoming = events.filter((event) => !ended(event));
+  const matching = upcoming.filter((event) =>
+    eventCategories(event).some((category) => data.interests.includes(category))
+  );
+  const recommended = (matching.length ? matching : upcoming).slice(0, 3);
+
+  return `<div class="welcome">
+    <h1>Good things are happening.</h1>
+    <p class="muted">Find your next campus event.</p>
+  </div>
+  <div id="heroHost">${hero()}</div>
+  ${recommended.length ? `<section class="discover-recommendations" aria-labelledby="discover-recommendations-title">
+    <div class="row between section-head">
+      <h2 id="discover-recommendations-title">Picked for you</h2>
+      <a href="/events">View all events ${icon("arrow-right")}</a>
+    </div>
+    <div class="grid">${recommended.map((event) => card(event, { compact: true })).join("")}</div>
+  </section>` : ""}`;
 }
 
 /* API integration. File previews are demo-only; Node enables Supabase mode. */
