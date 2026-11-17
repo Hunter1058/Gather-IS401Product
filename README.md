@@ -146,3 +146,5 @@ Gather stores user profiles in `User` and event listings in `Events`. The `Bookm
 
 See the [database schema](supabase/schema.sql) and [event plans migration](supabase/migrations/20261102000000_event_plans.sql) for the table definitions.
 For password recovery, durable signup profiles and authentication verification, see [AUTH-RECOVERY-SETUP.md](docs/AUTH-RECOVERY-SETUP.md) and [AUTH-TEST-CHECKLIST.md](docs/AUTH-TEST-CHECKLIST.md).
+
+For friends’ RSVPs on event cards, see [EVENT-FRIEND-ATTENDANCE.md](docs/EVENT-FRIEND-ATTENDANCE.md).

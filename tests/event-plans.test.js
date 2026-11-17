@@ -74,13 +74,16 @@ test('write failures are propagated and schema errors explain the migration', as
 
 test('friend attendance uses the caller-scoped RPC and preserves event IDs', async () => {
   const db = database();
-  db.client.rpc = async (...args) => {
-    assert.deepEqual(args, ['gather_friends_going']);
-    return { data: [{ EventID: '9223372036854775807' }], error: null };
+  db.client.rpc = async (name, args) => {
+    assert.equal(name, 'gather_event_friend_attendance');
+    assert.equal(args.p_limit, 250);
+    return { data: args.p_after_event_id ? [] : [{event_id: '9223372036854775807', friend_count: '1',
+      friends: [{id: USER_B, label: 'Blair'}]}], error: null };
   };
   const state = await readPlans(db.client, USER_A);
   assert.deepEqual(state.friendsGoing, ['9223372036854775807']);
   assert.equal(state.friendsGoingError, '');
+  assert.deepEqual(state.friendAttendance['9223372036854775807'], {count:'1',friends:[{id:USER_B,label:'Blair'}]});
 });
 
 test('attendance query failures keep personal plans available with an explicit error', async () => {

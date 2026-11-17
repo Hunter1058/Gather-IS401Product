@@ -103,7 +103,10 @@ function poster(event, extra = "") {
 async function api(path, options={}) {
   const response = await fetch("/api"+path, { credentials:"same-origin", headers:{"Content-Type":"application/json"}, ...options });
   const body = await response.json();
-  if (!response.ok) throw Error(body.error||"Request failed.");
+  if (!response.ok) {
+    window.GatherAttendance?.invalidate(data, response.status, body);
+    throw Object.assign(Error(body.error || "Request failed."), {status:response.status, code:body.code});
+  }
   return body;
 }
 function persistDemo() {
@@ -314,6 +317,7 @@ function card(event) {
         <span>${icon("clock")} ${pretty(event.date)} · ${time(event.start)}${event.end ? "–" + time(event.end) : ""}</span>
         <span>${icon("map-pin")} ${eventLocationLink(event)}</span>
       </div>
+      ${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}
       <div class="card-actions event-card-actions">
         ${planButton("rsvp", event)}
         ${shareButton(event)}
@@ -387,7 +391,7 @@ function renderResults() {
   const list = filteredEvents().filter(event => view !== "calendar" || (event.date >= rangeStart && event.date < rangeEnd));
   $("resultCount").textContent=`${list.length} event${list.length===1?"":"s"}`;
   const notice = planLoadError ? `<div class="notice" role="status">Events are available, but your account plans could not be loaded. ${esc(planLoadError)} <button onclick="boot()">Retry account</button></div>` : "";
-  $("results").innerHTML=notice + (view=== "calendar"?calendar(list):list.length?`<div class="list">${list.map(card).join("")}</div>`:(mode === "past"
+  $("results").innerHTML=notice + (window.GatherAttendance?.notice(data, stateReady) || "") + (view=== "calendar"?calendar(list):list.length?`<div class="list">${list.map(card).join("")}</div>`:(mode === "past"
   ? `<div class="empty">
       <h3>No past saved events yet.</h3>
       <p class="muted">Events you've bookmarked or RSVP'd to from the past six months will appear here!</p>
@@ -405,7 +409,7 @@ function renderResults() {
 
 function showModal(html) { $("modal").innerHTML=html; if(!$("modal").open)$("modal").showModal(); icons(); }
 function closeModal() { if($("modal").open)$("modal").close(); detailId = null; }
-function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not Specified")}</b>Major relevance: ${esc(event.major||"Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not Specified")}</p></section><div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); }
+function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not Specified")}</b>Major relevance: ${esc(event.major||"Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not Specified")}</p></section>${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
 

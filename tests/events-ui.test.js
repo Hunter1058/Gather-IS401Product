@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 
 // Run the real page scripts with a small document/HTTP fixture. This exercises
 // page logic and rendered markup; it does not replace a real-browser layout test.
-async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], friendsGoing = [], friendsGoingError = "", stateError = false, sessionError = false, href = 'http://fixture/events', navigator = {} } = {}) {
+async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], friendsGoing = [], friendAttendance = {}, friendsGoingError = "", stateError = false, sessionError = false, href = 'http://fixture/events', navigator = {} } = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', open: false, hidden: true,
@@ -33,7 +33,7 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
       }
       else if (path === '/api/state') {
         if (stateError) return { ok: false, async json() { return { error: 'Plans could not be loaded' }; } };
-        payload = { accountId: user?.id, state: { ...records, friendsGoing, friendsGoingError } };
+        payload = { accountId: user?.id, state: { ...records, friendsGoing, friendAttendance, friendsGoingError } };
       } else {
         if (held) await new Promise(resolve => { release = resolve; });
         if (failure) { failure = false; return { ok: false, async json() { return { error: 'Save failed' }; } }; }
@@ -50,6 +50,7 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
   context.window = context;
 vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta.url), 'utf8'), context);
 vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/friend-attendance.js', import.meta.url), 'utf8'), context);
 vm.runInContext(await readFile(new URL('../public/smart-search.js', import.meta.url), 'utf8'), context);
 vm.runInContext(await readFile(new URL('../public/events.js', import.meta.url), 'utf8'), context);
   await new Promise(resolve => setImmediate(resolve));
@@ -66,6 +67,48 @@ test('page restores account plans, escapes titles and renders styled share and p
   assert.match(html, /data-lucide="share-2"/);
   assert.match(html, /Time TBA/);
   assert.equal(page.run('data.saved.includes("stale-demo")'), false);
+});
+
+test('event list and details show a bounded, escaped friend attendance summary without requiring my own RSVP', async () => {
+  const page=await pageFixture({friendsGoing:['1'],friendAttendance:{'1':{count:'3',friends:[
+    {id:'b',label:'Blair <friend>'},{id:'c',label:'Casey & friends'},
+  ]}}});
+  assert.deepEqual(page.records.rsvp,[]);
+  assert.match(page.element('results').innerHTML,/3 friends going/);
+  assert.match(page.element('results').innerHTML,/Blair &lt;friend&gt;, Casey &amp; friends · \+1 more/);
+  page.run('openEvent("1")');
+  assert.match(page.element('modal').innerHTML,/3 friends going/);
+  page.run('setMode("friendsGoing")');
+  assert.match(page.element('results').innerHTML,/Jazz &lt;friends&gt;/);
+});
+
+test('guest, unavailable state and wrong-event data never show cached attendance as a confirmed result', async () => {
+  const friendAttendance={'1':{count:'1',friends:[{id:'b',label:'PRIVATE CACHED NAME'}]}};
+  for(const settings of [{user:null},{stateError:true},{sessionError:true},{friendsGoingError:'Unavailable'}]){
+    const page=await pageFixture({...settings,friendAttendance});
+    assert.doesNotMatch(page.element('results').innerHTML,/PRIVATE CACHED NAME|data-friend-attendance/);
+    assert.match(page.element('results').innerHTML,/Jazz &lt;friends&gt;/);
+  }
+  const other=await pageFixture({friendAttendance:{'2':friendAttendance['1']}});
+  assert.doesNotMatch(other.element('results').innerHTML,/data-friend-attendance/);
+});
+
+test('missing attendance shows a notice and personal controls remain usable; empty success shows no badge',async()=>{
+  const unavailable=await pageFixture({friendsGoingError:'Attendance unavailable'});
+  assert.match(unavailable.element('results').innerHTML,/Friends’ attendance could not be loaded/);
+  await unavailable.run('bookmark("1")');assert.deepEqual(unavailable.records.saved,['1']);
+  const empty=await pageFixture();assert.doesNotMatch(empty.element('results').innerHTML,/event-friend-attendance|event-friend-notice/);
+});
+
+test('an expired or changed account clears attendance immediately after a rejected action',async()=>{
+  for(const status of [401,409]){
+    const page=await pageFixture({friendAttendance:{'1':{count:'1',friends:[{id:'b',label:'Previous account friend'}]}}});
+    assert.match(page.element('results').innerHTML,/Previous account friend/);
+    page.context.fetch=async()=>({ok:false,status,async json(){return {error:'Your account changed. Reload before saving.'};}});
+    await page.run('bookmark("1")');
+    assert.doesNotMatch(page.element('results').innerHTML,/Previous account friend|data-friend-attendance/);
+    assert.deepEqual(page.records.saved,[]);
+  }
 });
 
 test('list clicks persist individual states, never open details, and share filter state', async () => {

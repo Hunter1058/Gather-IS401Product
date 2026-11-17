@@ -31,6 +31,11 @@ try {
   const events = ['1', '2'].map(id => ({ id, name: id === '1' ? 'Jazz & friends' : 'Campus games', category: 'Arts', location: 'Music Building', date: dateKey, start: '18:30:00', end: null, description: 'A friendly campus event.', poster: 'ARTS', friends: [], price: 0, food: false, club: 'Campus organizer', major: 'All majors' }));
   let account = 'a', failure = false, wait = 0, sessionFailure = false, plansFailure = false;
   const writes = [];
+  let attendanceFailure = false;
+  const attendance = {a:{'1':{count:'2',friends:[
+    {id:'11111111-1111-4111-8111-111111111111',label:'Blair <friend>'},
+    {id:'22222222-2222-4222-8222-222222222222',label:'Casey'},
+  ]}},b:{}};
   const records = { a: { saved: [], rsvp: [] }, b: { saved: [], rsvp: [] } };
   await context.route('**/api/**', async route => {
     const req = route.request(), path = new URL(req.url()).pathname;
@@ -43,7 +48,7 @@ try {
     else if (path === '/api/auth/session' && sessionFailure) { status = 503; body = { error: 'Account service unavailable' }; }
     else if (path === '/api/state' && plansFailure) { status = 503; body = { error: 'Plans service unavailable' }; }
     else if (path === '/api/auth/session') body = { user: account ? { id: account, name: 'Student ' + account } : null };
-    else if (path === '/api/state') body = { accountId: account, state: { ...records[account], attended: [], friends: [], interests: [], reminders: {}, surveys: {} } };
+    else if (path === '/api/state') body = { accountId: account, state: { ...records[account], friendAttendance:attendanceFailure?{}:attendance[account], friendsGoing:attendanceFailure?[]:Object.keys(attendance[account]), friendsGoingError:attendanceFailure?'Attendance unavailable':'', attended: [], friends: [], interests: [], reminders: {}, surveys: {} } };
     else if (/\/api\/events\/\d+\/(bookmark|rsvp)$/.test(path)) {
       if (wait) await new Promise(resolve => setTimeout(resolve, wait));
       if (failure) { status = 500; body = { error: 'Unable to save. Try again.' }; failure = false; }
@@ -67,6 +72,26 @@ try {
   await page.goto(base + '/events');
   await page.waitForSelector('.event-card');
   assert.equal(await page.locator('.event-card').count(), 2);
+  const summary=()=>page.locator('.event-card [data-friend-attendance="1"]');
+  await summary().getByText('2 friends going',{exact:true}).waitFor();
+  assert.match(await summary().textContent(),/Blair <friend>, Casey/);
+  assert.equal(await summary().locator('img').count(),0);
+  await page.getByRole('button',{name:'Friends going',exact:true}).click();
+  assert.equal(await page.locator('.event-card').count(),1);
+  await page.getByRole('button',{name:'All upcoming',exact:true}).click();
+  attendance.a['1']={count:'1',friends:[attendance.a['1'].friends[0]]};
+  await page.reload();await summary().getByText('1 friend going',{exact:true}).waitFor();
+  assert.doesNotMatch(await summary().textContent(),/Casey/);
+  delete attendance.a['1'];
+  await page.reload();await page.waitForSelector('.event-card');
+  assert.equal(await page.locator('[data-friend-attendance]').count(),0);
+  assert.equal(await page.locator('.event-card').count(),2);
+  attendanceFailure=true;
+  await page.reload();await page.locator('.event-friend-notice').waitFor();
+  assert.equal(await control('bookmark').isEnabled(),true);
+  attendanceFailure=false;
+  attendance.a['1']={count:'1',friends:[{id:'11111111-1111-4111-8111-111111111111',label:'Blair <friend>'}]};
+  await page.reload();await summary().waitFor();
   await page.getByRole('button', { name: 'Minimize', exact: true }).click();
   await page.locator('#toolbarReopenButton').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#toolbar').isVisible(), false);
@@ -192,6 +217,7 @@ try {
   await control('bookmark').click();
   await page.waitForFunction(() => document.getElementById('toast').textContent.includes('account changed'));
   assert.deepEqual(records.b.saved, []);
+  assert.equal(await page.locator('[data-friend-attendance]').count(),0);
   await page.reload(); await pressed('bookmark', false); await pressed('rsvp', false, '2');
   await control('bookmark').click(); await pressed('bookmark', true);
   assert.deepEqual(records.a.saved, []);
@@ -251,7 +277,7 @@ try {
   assert.match(await page.locator('dialog h2').textContent(), /Jazz/);
   assert.deepEqual(errors, []);
   assert(writes.every(write => !('UserID' in write.payload)));
-  console.log('PASS: persistence/reload, errors, pending, focus, concurrent actions, filters, Saved integration, account isolation, modal, guest redirect, mobile, account-service outages, login/reload, shared event links, home Share/Going controls.');
+  console.log('PASS: persistence/reload, errors, pending, focus, concurrent actions, filters, Saved integration, account isolation, modal, guest redirect, mobile, account-service outages, login/reload, shared event links, home Share/Going controls, friend attendance badges/filter/reload/errors/account isolation.');
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));
