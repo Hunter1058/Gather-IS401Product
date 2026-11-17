@@ -146,9 +146,9 @@ function filteredEvents() {
 
     const withinSixMonths =
       new Date(event.date + "T23:59:59") >= sixMonthsAgo;
-      
-    const allowed =
-    view === "calendar"
+
+  const allowed =
+  view === "calendar" && mode === "upcoming"
     ? true
     : mode === "past"
     ? past && withinSixMonths &&
