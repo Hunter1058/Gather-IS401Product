@@ -466,6 +466,24 @@ function showModal(html, label) {
   icons();
   refreshPlanControls();
 }
+// One background attempt per opened detail session; never retry analytics writes.
+async function logEventView(id) {
+  if (backendMode !== "supabase" || !data.user?.id) return;
+  try {
+    const response = await fetch("/api/events/" + encodeURIComponent(id) + "/view", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-Gather-Account": data.user.id },
+      body: "{}",
+    });
+    if (!response.ok) console.warn("Event view logging failed:", response.status);
+  } catch {
+    console.warn("Event view logging failed: network error");
+  }
+}
+$("modal").addEventListener("close", () => {
+  // A native close event may be queued when the dialog has already reopened.
+  if (!$("modal").open) detailId = null;
+});
 function openEvent(id) {
   let e = events.find((e) => e.id === id);
   if (!e) {
@@ -475,6 +493,7 @@ function openEvent(id) {
     );
     return;
   }
+  const newView = !$("modal").open || detailId !== id;
   detailId = id;
   showModal(
     `<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(e.name)}</h2><div class="event-tags">${categoryTags(e)}${ended(e) ? '<span class="tag">Past event</span>' : ""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(e.date, true)}</b>${time(e.start)}${e.end ? "–" + time(e.end) : ""}</div>${eventWhereTile(e)}<div><span class="muted">Admission</span><b>${eventAdmission(e)}</b>${eventFood(e)}</div><div><span class="muted">Hosted by</span><b>${esc(e.club || "Not Specified")}</b>Major relevance: ${esc(e.major || "Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(e.description || "Not Specified")}</p></section>${window.GatherAttendance?.render(e, data, stateReady && backendMode === "supabase", ended(e)) || ""}<div class="row event-detail-actions"><button class="${data.saved.includes(id) ? "active" : ""}" data-plan-kind="bookmark" data-event-id="${id}" onclick="bookmark('${id}')">${data.saved.includes(id) ? icon("bookmark-check") + " Saved" : icon("bookmark") + " Save event"}</button>${ended(e) ? `<button onclick="attend('${id}')">${data.attended.includes(id) ? "✓ Attended" : "Mark attended"}</button>${data.saved.includes(id) || data.attended.includes(id) ? `<button class="primary" onclick="survey('${id}')">${data.surveys[id] ? "Edit reflection" : "Rate this event"}</button>` : ""}` : `<button class="primary" data-plan-kind="rsvp" data-event-id="${id}" onclick="rsvp('${id}')">${data.rsvp.includes(id) ? "✓ RSVP’d · Cancel" : "RSVP to event"}</button>`}${shareButton(e)}</div>${
@@ -495,6 +514,7 @@ function openEvent(id) {
     }</div>`,
     "Event details: " + e.name,
   );
+  if (newView) void logEventView(id);
 }
 function closeModal() {
   const target = friendDetail?.id;

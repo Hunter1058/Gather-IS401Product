@@ -5,20 +5,22 @@ import { readFile } from 'node:fs/promises';
 
 // Run the real page scripts with a small document/HTTP fixture. This exercises
 // page logic and rendered markup; it does not replace a real-browser layout test.
-async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], friendsGoing = [], friendAttendance = {}, friendsGoingError = "", stateError = false, sessionError = false, href = 'http://fixture/events', navigator = {} } = {}) {
+async function pageFixture({ script = 'events', viewError = false, user = { id: 'a', name: 'Student' }, saved = [], rsvp = [], friendsGoing = [], friendAttendance = {}, friendsGoingError = "", stateError = false, sessionError = false, href = 'http://fixture/events', navigator = {} } = {}) {
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', open: false, hidden: true,
-      classList: { add() {}, remove() {}, toggle() {} }, querySelector() { return null; }, addEventListener() {}, setAttribute() {}, showModal() { this.open = true; }, close() { this.open = false; } });
+      listeners: {}, dispatch(type) { for (const fn of this.listeners[type] || []) fn({type}); },
+      classList: { add() {}, remove() {}, toggle() {} }, querySelector() { return null; }, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, setAttribute() {}, showModal() { this.open = true; }, close() { this.open = false; this.dispatch("close"); } });
     return elements.get(id);
   };
-  const records = { saved: [...saved], rsvp: [...rsvp] }, writes = [];
+  const records = { saved: [...saved], rsvp: [...rsvp] }, writes = [], views = [], diagnostics = [];
   let failure = false, release, held = false;
-  const context = vm.createContext({ URL, console, Map, Set, Date, encodeURIComponent,
+  const context = vm.createContext({ URL, console: { ...console, warn(...args) { diagnostics.push(args); } }, Map, Set, Date, encodeURIComponent,
+    matchMedia() { return { matches: false }; }, setInterval() { return 1; }, scrollTo() {},
     clearTimeout, setTimeout(fn, ms) { const timer = setTimeout(fn, ms); timer.unref(); return timer; },
     localStorage: { getItem() { return JSON.stringify({ saved: ['stale-demo'], rsvp: ['stale-demo'] }); }, setItem() {} },
     navigator,
-    location: { href, assign(path) { this.redirect = path; } },
+    location: { href, protocol: "http:", hash: new URL(href).hash, assign(path) { this.redirect = path; } },
     history: { replaceState() {} },
     document: { getElementById: element, addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, activeElement: null },
     addEventListener() {},
@@ -34,6 +36,9 @@ async function pageFixture({ user = { id: 'a', name: 'Student' }, saved = [], rs
       else if (path === '/api/state') {
         if (stateError) return { ok: false, async json() { return { error: 'Plans could not be loaded' }; } };
         payload = { accountId: user?.id, state: { ...records, friendsGoing, friendAttendance, friendsGoingError } };
+      } else if (/\/events\/[^/]+\/view$/.test(path)) {
+        views.push({path, options});
+        return {ok: !viewError, status: viewError ? 503 : 201};
       } else {
         if (held) await new Promise(resolve => { release = resolve; });
         if (failure) { failure = false; return { ok: false, async json() { return { error: 'Save failed' }; } }; }
@@ -52,9 +57,13 @@ vm.runInContext(await readFile(new URL('../public/event-sharing.js', import.meta
 vm.runInContext(await readFile(new URL('../public/event-plans.js', import.meta.url), 'utf8'), context);
 vm.runInContext(await readFile(new URL('../public/friend-attendance.js', import.meta.url), 'utf8'), context);
 vm.runInContext(await readFile(new URL('../public/smart-search.js', import.meta.url), 'utf8'), context);
-vm.runInContext(await readFile(new URL('../public/events.js', import.meta.url), 'utf8'), context);
+vm.runInContext(await readFile(new URL('../public/friend-actions.js', import.meta.url), 'utf8'), context);
+const source = (await readFile(new URL(`../public/${script}.js`, import.meta.url), 'utf8'))
+  .replace(/boot\(\);\s*$/, 'globalThis.bootPromise = boot();');
+vm.runInContext(source, context);
+if (context.bootPromise) await context.bootPromise;
   await new Promise(resolve => setImmediate(resolve));
-  return { context, element, records, writes, run: code => vm.runInContext(code, context), fail() { failure = true; }, hold() { held = true; }, release() { held = false; release(); } };
+  return { context, element, records, writes, views, diagnostics, run: code => vm.runInContext(code, context), fail() { failure = true; }, hold() { held = true; }, release() { held = false; release(); } };
 }
 
 test('page restores account plans, escapes titles and renders styled share and plan controls', async () => {
@@ -303,3 +312,49 @@ test('view toggle updates its label in both directions and preserves filters', a
   assert.doesNotMatch(page.element('toolbar').innerHTML, /List view/);
   assert.match(page.element('toolbar').innerHTML, /value="Jazz"/);
 });
+
+for (const script of ['events', 'app']) {
+  test(`${script}: only new detail openings log views, including native Escape close and shared links`, async () => {
+    const page = await pageFixture({script});
+    page.run('openEvent("1"); openEvent("1")');
+    assert.equal(page.views.length, 1);
+    assert.equal(page.views[0].options.headers['X-Gather-Account'], 'a');
+    await page.run('bookmark("1")');
+    await page.run('rsvp("1")');
+    assert.equal(page.views.length, 1);
+    page.run('events.push({...events[0], id:"9007199254740993"}); openEvent("9007199254740993")');
+    assert.equal(page.views.at(-1).path, '/api/events/9007199254740993/view');
+    // Escape invokes native dialog close, bypassing closeModal().
+    page.element('modal').close();
+    assert.equal(page.run('detailId'), null);
+    page.run('openEvent("9007199254740993"); closeModal(); openEvent("1")');
+    assert.equal(page.views.length, 4);
+    page.run('openEvent("missing")');
+    assert.equal(page.views.length, 4);
+    const shared = await pageFixture({script, href:script === 'events' ? 'http://fixture/events?event=1' : 'http://fixture/#event=1'});
+    assert.equal(shared.views.length, 1);
+  });
+  test(`${script}: anonymous and demo browsing skip analytics; failed logging keeps details and never retries`, async () => {
+    const guest = await pageFixture({script, user:null});
+    guest.run('openEvent("1")');
+    assert.equal(guest.views.length, 0);
+    assert.equal(guest.element('modal').open, true);
+    assert.equal(guest.context.location.redirect, undefined);
+    const page = await pageFixture({script, viewError:true});
+    page.run('openEvent("1")');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(page.element('modal').open, true);
+    assert.equal(page.diagnostics.length, 1);
+    assert.equal(page.element('toast').textContent, '');
+    page.run('openEvent("1")');
+    assert.equal(page.views.length, 1);
+    page.run('closeModal(); backendMode="demo"; openEvent("1")');
+    assert.equal(page.views.length, 1);
+    page.run('closeModal(); backendMode="supabase"');
+    page.context.fetch = async () => { throw Error('offline'); };
+    page.run('openEvent("1")');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(page.element('modal').open, true);
+    assert.equal(page.diagnostics.length, 2);
+  });
+}

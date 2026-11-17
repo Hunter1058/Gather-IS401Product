@@ -5,7 +5,7 @@ export const USER_B = '22222222-2222-4222-8222-222222222222';
 export function database() {
   const rows = {
     User: [{ UserID: USER_A }, { UserID: USER_B }],
-    Events: [{ EventID: '1' }, { EventID: '2' }], EventCategory: [], Bookmark: [], RSVP: [],
+    Events: [{ EventID: '1' }, { EventID: '2' }], EventCategory: [], EventInteractionLog: [], Bookmark: [], RSVP: [],
   };
   const errors = new Map();
   const calls = [];
@@ -22,6 +22,7 @@ export function database() {
         order() { return q; },
         limit() { return q; },
         eq(column, value) { filters.push([column, value]); return q; },
+        insert(value) { operation = 'insert'; payload = value; return q; },
         upsert(value, options) { operation = 'upsert'; payload = value; assert.equal(options.onConflict, 'UserID,EventID'); return q; },
         delete() { operation = 'delete'; return q; },
         single() { singular = true; return q; },
@@ -32,7 +33,9 @@ export function database() {
             if (errors.has(table)) return { data: null, error: errors.get(table) };
             const matches = row => filters.every(([key, value]) => String(row[key]) === String(value));
             let data;
-            if (operation === 'upsert') {
+            if (operation === 'insert') {
+              data = [{ ...payload }]; rows[table].push(...data);
+            } else if (operation === 'upsert') {
               let row = rows[table].find(row => row.UserID === payload.UserID && row.EventID === payload.EventID);
               if (row) Object.assign(row, payload);
               else { row = { ...payload }; rows[table].push(row); }

@@ -16,6 +16,7 @@ import { createClient } from "@supabase/supabase-js";
 import { authSessions } from "./lib/auth-session.js";
 import { isSameOrigin } from "./lib/request-origin.js";
 import { people, userId, friendBody, sendRequest, cancelRequest, removeFriend, respondRequest, connections } from "./lib/friends.js";
+import { logEventView } from "./lib/event-interactions.js";
 import { planInput, profileId, readPlans, writePlan } from "./lib/event-plans.js";
 
 // Server and Supabase configuration. Supabase credentials must be provided together.
@@ -104,7 +105,7 @@ export const server = http.createServer(async (req, res) => {
       if (route === "/events" && req.method === "GET") {
         const { data, error } = await publicClient
           .from("Events")
-          .select("EventID, EventName, EventLocation, EventDate, EventTime, EventDescription, EventImage, CampusLocation, categoryLinks:Event_Category_Linking_Table(IsPrimary, category:EventCategory(EventCatagory, EventStockImage))")
+          .select("EventID::text, EventName, EventLocation, EventDate, EventTime, EventDescription, EventImage, CampusLocation, categoryLinks:Event_Category_Linking_Table(IsPrimary, category:EventCategory(EventCatagory, EventStockImage))")
           .limit(500);
         
         if (error) throw error;
@@ -463,6 +464,21 @@ return json(res, 200, {
         }
         const owner = await profileId(session.client, session.user.id);
         return json(res, 200, { accountId: session.user.id, state: await readPlans(session.client, owner) });
+      }
+
+      // Analytics uses the same verified user JWT and origin protection as plan writes.
+      const viewRoute = /^\/events\/([^/]+)\/view$/.exec(route);
+      if (viewRoute) {
+        if (req.method !== "POST") {
+          res.setHeader("Allow", "POST");
+          return json(res, 405, { error: "Use POST to log an event view." });
+        }
+        const session = await sessionCookies.restore(req, res);
+        if (!session) return json(res, 401, { error: "Sign in to log an event view." });
+        if (req.headers["x-gather-account"] !== session.user.id)
+          return json(res, 409, { error: "Your account changed. Reload before continuing.", code: "ACCOUNT_CHANGED" });
+        await logEventView(session.client, session.user.id, viewRoute[1], await body(req));
+        return json(res, 201, { logged: true });
       }
 
       // Idempotent per-event writes cannot erase plans for unrelated events.
