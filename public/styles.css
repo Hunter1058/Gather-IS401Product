@@ -2136,3 +2136,29 @@ footer {
 @media (max-width: 600px) {
   .calendar-month-controls .calendar-month-count { display: none; }
 }
+
+/* Friends' attendance stays secondary to the event title and primary actions. */
+.event-friend-attendance {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  margin: 12px 0;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.event-friend-attendance > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-top: 2px;
+  color: var(--primary);
+}
+.event-friend-attendance > div { min-width: 0; }
+.event-friend-count { display: block; font-weight: 600; }
+.event-friend-names { display: block; color: var(--muted-foreground); }
+.event-friend-notice { margin-bottom: 16px; }
