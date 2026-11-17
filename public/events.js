@@ -146,19 +146,24 @@ function filteredEvents() {
 
     const withinSixMonths =
       new Date(event.date + "T23:59:59") >= sixMonthsAgo;
-      const allowed =
-      mode === "past"
-        ? past && withinSixMonths &&
-          (data.saved.includes(event.id) || data.rsvp.includes(event.id))
-        : mode === "saved"
-        ? data.saved.includes(event.id) && !past
-        : mode === "savedPast"
-        ? data.saved.includes(event.id) && past
-        : mode === "friendsGoing"
-        ? (data.friendsGoing || []).includes(event.id) && !past
-        : mode === "rsvp"
-        ? data.rsvp.includes(event.id) && !past
-        : !past;
+
+  const allowed =
+  view === "calendar" && mode === "upcoming"
+    ? true
+    : mode === "past"
+    ? past && withinSixMonths &&
+      (data.saved.includes(event.id) || data.rsvp.includes(event.id))
+    : mode === "saved"
+    ? data.saved.includes(event.id) && !past
+    : mode === "savedPast"
+    ? data.saved.includes(event.id) && past
+    : mode === "friendsGoing"
+    ? (data.friendsGoing || []).includes(event.id) && !past
+    : mode === "rsvp"
+    ? data.rsvp.includes(event.id) && !past
+    : !past;
+
+
     return allowed && smartEventMatch(event, filters.q) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus);
   }).sort(personalizedEventSort);
 }
@@ -276,8 +281,45 @@ window.addEventListener("scroll", () => {
   if (toolbarCollapsed) positionToolbarReopen();
 }, { passive: true });
 
+function updateActiveNav() {
+  document.querySelectorAll(
+    'a[href="/events"], a[href="/events?view=calendar"]'
+  ).forEach(link => {
+    const isCalendar = link.getAttribute("href").includes("calendar");
+    const isActive = isCalendar
+      ? view === "calendar"
+      : view !== "calendar";
+
+    link.classList.toggle("active", isActive);
+
+    if (isActive) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  });
+}
+
+
 // Display switching: toggling changes the URL as well as the rendered page.
-function toggleView() { view=view=== "calendar"?"list":"calendar"; history.replaceState(null,"",view=== "calendar"?"/events?view=calendar":"/events"); $("pageTitle").textContent=view=== "calendar"?"Your campus calendar.":"What’s happening at BYU."; renderToolbar(); renderResults(); }
+function toggleView() {
+  view = view === "calendar" ? "list" : "calendar";
+
+  history.replaceState(
+    null,
+    "",
+    view === "calendar" ? "/events?view=calendar" : "/events"
+  );
+
+  $("pageTitle").textContent =
+    view === "calendar"
+      ? "Your campus calendar."
+      : "What’s happening at BYU.";
+
+  updateActiveNav();
+  renderToolbar();
+  renderResults();
+}
 
 // Both list and modal controls use the same per-event persistence controller.
 function bookmark(id) { return plans.set("bookmark", id); }
@@ -529,10 +571,12 @@ async function boot() {
   }
 
   $("pageTitle").textContent = view === "calendar"
-    ? "Your campus calendar."
-    : "What’s happening at BYU.";
-  renderToolbar();
-  renderResults();
+  ? "Your campus calendar."
+  : "What’s happening at BYU.";
+
+updateActiveNav(); // Highlight the correct navigation button
+renderToolbar();
+renderResults();
   const sharedId = new URL(location.href).searchParams.get("event");
   if (sharedId) {
     if (events.some(event => event.id === sharedId)) openEvent(sharedId);
