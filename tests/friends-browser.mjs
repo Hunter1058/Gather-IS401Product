@@ -29,6 +29,10 @@ try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.route('https://fonts.googleapis.com/**', route => route.abort());
   const db = friendDatabase();
+  db.users[1].photo_url = 'https://photos.example.test/portrait.jpg';
+  await context.route('https://photos.example.test/**', route => route.fulfill({
+    contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="720"><rect width="480" height="720" fill="#287b91"/><circle cx="240" cy="210" r="120" fill="#eed9ba"/></svg>',
+  }));
   db.interests.set(A, new Set(['1'])); db.interests.set(db.users[2].user_id, new Set(['1']));
   let account = A, delay = 0, failWrite = false;
   await context.route('**/api/**', async route => {
@@ -111,6 +115,35 @@ try {
   db.eventRecords.set('1',{name:'Shared campus jazz',date:'2026-11-15'});
   await card().locator('[data-friend-open]').click();
   await page.getByRole('dialog',{name:'Shared connections',exact:true}).getByText('Shared campus jazz',{exact:true}).waitFor();
+  const portrait = page.getByRole('button', { name: 'Enlarge profile photo of Blair <friend>', exact: true });
+  const photoViewer = page.getByRole('dialog', { name: 'Enlarged profile photo', exact: true });
+  const closePhoto = page.getByRole('button', { name: 'Close enlarged photo', exact: true });
+  await portrait.click(); await photoViewer.locator('img').waitFor({ state: 'visible' });
+  assert.equal(await closePhoto.evaluate(el => el === document.activeElement), true, 'photo dialog starts with an accessible close action focused');
+  assert.equal(await page.locator('#modal').evaluate(el => el.open), true, 'profile stays open under the photo');
+  assert.equal(await photoViewer.locator('img').evaluate(el => getComputedStyle(el).objectFit), 'contain');
+  await photoViewer.locator('img').click(); assert.equal(await photoViewer.isVisible(), true);
+  await page.keyboard.press('Escape'); await photoViewer.waitFor({ state: 'hidden' });
+  assert.equal(await portrait.evaluate(el => el === document.activeElement), true);
+  await portrait.click(); await closePhoto.click(); await photoViewer.waitFor({ state: 'hidden' });
+  await portrait.click(); await page.mouse.click(5, 100); await photoViewer.waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('#modal').evaluate(el => el.open), true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await portrait.click(); await photoViewer.locator('img').waitFor({ state: 'visible' });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.equal(await closePhoto.evaluate(el => el.getBoundingClientRect().height >= 44), true);
+  // Real touch input exercises browser gesture handling, rather than only firing JS events.
+  const touch = await context.newCDPSession(page);
+  await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 190, y: 250, id: 1 }] });
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 195, y: 310, id: 1 }] });
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 195, y: 410, id: 1 }] });
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await photoViewer.waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('#modal').evaluate(el => el.open), true);
+  assert.equal(await portrait.evaluate(el => el === document.activeElement), true);
+  await touch.send('Emulation.setTouchEmulationEnabled', { enabled: false }); await touch.detach();
+  await page.setViewportSize({ width: 1280, height: 900 });
   assert.equal(db.attempts.length,0,'opening a profile must not send a request');
   await page.getByRole('button',{name:'Close shared connections',exact:true}).click();
   assert.equal(await card().locator('[data-friend-open]').evaluate(el=>el===document.activeElement),true);
