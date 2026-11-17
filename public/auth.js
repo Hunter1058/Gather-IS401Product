@@ -246,32 +246,59 @@ async function loadSettings() {
       const initials = name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase();
       const interests = profile.categories.filter(category => profile.categoryIds.includes(category.id));
       renderAccountHeader(name, profile.photoUrl);
-      app.innerHTML = `<section class="auth">
-        <h1>Profile settings</h1>
-        <div class="avatar settings-photo" aria-hidden="true">
-          <span>${esc(initials)}</span>
-          ${photo && /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(photo) ? `<img src="${esc(photo)}" alt="">` : ""}
+      app.innerHTML = `<section class="profile-settings" aria-labelledby="profileSettingsTitle">
+        <h1 id="profileSettingsTitle">Profile settings</h1>
+        <div class="auth settings-panel">
+          <section class="settings-section" aria-labelledby="settingsProfileTitle">
+            <h2 id="settingsProfileTitle">Profile</h2>
+            <div class="settings-profile-row">
+              <div class="avatar settings-photo" aria-hidden="true">
+                <span>${esc(initials)}</span>
+                ${photo && /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(photo) ? `<img src="${esc(photo)}" alt="">` : ""}
+              </div>
+              <div class="settings-identity">
+                <strong>${esc(name)}</strong>
+                <p>${profile.username ? "@" + esc(profile.username.replace(/^@/, "")) : "Username not set"}</p>
+                <p class="muted">${esc(data.user.email || "")}</p>
+              </div>
+              <button id="editSettings" class="primary" type="button">Edit profile</button>
+            </div>
+            <p id="settingsSaved" role="status" tabindex="-1">${esc(message)}</p>
+          </section>
+          <section class="settings-section" aria-labelledby="settingsPrivacyTitle">
+            <h2 id="settingsPrivacyTitle">Privacy</h2>
+            <div class="settings-visibility">
+              <strong>Profile visibility</strong>
+              <span class="settings-chip">${profile.isPrivate ? "Private" : "Public"}</span>
+            </div>
+            <p class="muted">${profile.isPrivate
+              ? "People can find you by username. Your name and photo are hidden in search."
+              : "Other signed-in users can see your name and photo."}</p>
+          </section>
+          <section class="settings-section" aria-labelledby="settingsInterestsTitle">
+            <h2 id="settingsInterestsTitle">Event interests</h2>
+            <p class="muted">These shape your recommendations on Discover.</p>
+            ${interests.length ? `<ul class="settings-chips">${interests.map(category =>
+              `<li class="settings-chip">${esc(category.EventCatagory || "Unnamed category")}</li>`
+            ).join("")}</ul>` : '<p class="muted">No interests selected.</p>'}
+          </section>
+          <section class="settings-section" aria-labelledby="settingsAccountTitle">
+            <h2 id="settingsAccountTitle">Account</h2>
+            <div class="settings-account-actions">
+              <button type="button" onclick="signOut()">Sign out</button>
+              <details class="delete-account">
+                <summary>Delete account</summary>
+                <p>This permanently deletes your profile, saved plans, and friendships.</p>
+                <form id="deleteAccountForm">
+                  <label>Current password<input name="password" type="password" autocomplete="current-password" maxlength="4096" required></label>
+                  <label>Type DELETE to confirm<input name="confirmation" autocomplete="off" required pattern="DELETE"></label>
+                  <button type="submit">Permanently delete my account</button>
+                  <p id="deleteAccountStatus" role="status"></p>
+                </form>
+              </details>
+            </div>
+          </section>
         </div>
-        <h2>${esc(name)}</h2>
-        <p>Username: ${profile.username ? "@" + esc(profile.username.replace(/^@/, "")) : "Not set"}</p>
-        <p class="muted">${esc(data.user.email || "")}</p>
-        <p>Profile visibility: ${profile.isPrivate ? "Private" : "Public"}</p>
-        <h3>Event interests</h3>
-        <p>${interests.length ? interests.map(category => categoryLabel(category)).join(", ") : "No interests selected."}</p>
-        <p id="settingsSaved" role="status" tabindex="-1">${esc(message)}</p>
-        <button id="editSettings" class="primary" type="button">Edit profile</button>
-        <button type="button" onclick="go('saved')">View saved plans</button>
-        <button type="button" onclick="signOut()">Sign out</button>
-        <details class="delete-account">
-          <summary>Delete account</summary>
-          <p>This permanently deletes your profile, saved plans, and friendships.</p>
-          <form id="deleteAccountForm">
-            <label>Current password<input name="password" type="password" autocomplete="current-password" maxlength="4096" required></label>
-            <label>Type DELETE to confirm<input name="confirmation" autocomplete="off" required pattern="DELETE"></label>
-            <button type="submit">Permanently delete my account</button>
-            <p id="deleteAccountStatus" role="status"></p>
-          </form>
-        </details>
       </section>`;
       const photoImage = app.querySelector(".settings-photo img");
       photoImage?.addEventListener("error", () => photoImage.remove());
@@ -307,7 +334,7 @@ async function loadSettings() {
 
     function showForm() {
       const selected = new Set(profile.categoryIds);
-      app.innerHTML = `<form class="auth" id="settingsForm">
+      app.innerHTML = `<form class="auth settings-panel" id="settingsForm">
         <h1>Profile settings</h1>
         <p class="muted">${esc(data.user.email || "")}</p>
         <label>First name<input name="firstName" autocomplete="given-name" maxlength="60" required value="${esc(profile.firstName)}"></label>
@@ -330,7 +357,7 @@ async function loadSettings() {
           ).join("") || "<p>No categories available.</p>"}</div>
         </fieldset>
         <p id="settingsStatus" role="status"></p>
-        <button class="primary" type="submit">Save settings</button>
+        <button class="primary" type="submit">Save changes</button>
         <button id="cancelSettings" type="button">Cancel</button>
       </form>`;
       $("cancelSettings").addEventListener("click", () => {
@@ -362,7 +389,7 @@ async function loadSettings() {
             }),
           });
           profile = { ...profile, ...saved, photoUrl: photoUrl ?? profile.photoUrl, categoryIds: fields.getAll("categoryId") };
-          showSummary("Settings saved.");
+          showSummary("Profile updated.");
         } catch (error) {
           status.textContent = error.message;
         } finally {

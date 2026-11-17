@@ -1,10 +1,14 @@
 /*
- * Gather styles — Frosted Campus Glass
+ * Gather styles â€” BYU Navy
  * ------------------------------------
  * Semantic colors define the theme. Components below combine those tokens,
  * shared spacing, responsive rules, and accessible interaction states.
  */
 :root {
+  --discover-navy: #002e5d;
+  --discover-background: #edf2f6;
+  --discover-card: #fff;
+  --discover-heading: Georgia, serif;
   --font-display: "Space Grotesk", sans-serif;
   --font-body: "Inter", sans-serif;
   --background: oklch(0.96 0.025 230);
@@ -64,25 +68,13 @@
   box-sizing: border-box;
 }
 
-/* Discover palette */
-body:has(#app .welcome) {
-  --discover-navy: #002e5d;
-  --discover-background: #edf2f6;
-  --discover-card: #fff;
-  --discover-heading: Georgia, serif;
-}
-
 /* Base document, typography defaults, and global controls. */
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--page-gradient);
+  background: var(--discover-background);
   color: var(--foreground);
   font: 14px/1.55 var(--font-body);
-}
-
-body:has(#app .welcome) {
-  background: var(--discover-background);
 }
 
 button,
@@ -190,7 +182,7 @@ h1,
 h2,
 h3,
 .brand {
-  font-family: var(--font-display);
+  font-family: var(--discover-heading);
 }
 
 h1 {
@@ -246,7 +238,6 @@ header {
   padding: 15px 23px;
   border: 1px solid var(--surface);
   border-radius: 20px;
-  background: var(--glass);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
   display: flex;
@@ -255,28 +246,25 @@ header {
   gap: 20px;
 }
 
-body:has(#app .welcome) > header {
+body > header {
   background: var(--discover-navy);
-}
-
-body:has(#app .welcome) > header :is(.brand, .brand span, .brand small, .mobile-menu, nav a, nav button) {
   color: #fff;
 }
 
-body:has(#app .welcome) > header .brand {
-  font-family: var(--discover-heading);
+body > header :is(.brand, .brand span, .brand small, .mobile-menu, nav a, nav button) {
+  color: #fff;
 }
 
-body:has(#app .welcome) > header nav :is(a, button):is(.active, :hover) {
+body > header nav :is(a, button):is(.active, :hover) {
   background: #fff;
   color: var(--discover-navy);
 }
 
-body:has(#app .welcome) > header .mobile-menu:hover {
+body > header .mobile-menu:hover {
   background: rgb(255 255 255 / 16%);
 }
 
-body:has(#app .welcome) > header :is(nav a, nav button, .mobile-menu, .header-user):focus-visible {
+body > header :is(nav a, nav button, .mobile-menu, .header-user):focus-visible {
   outline-color: #fff;
 }
 
@@ -396,7 +384,10 @@ main {
   color: var(--primary);
 }
 
-body:has(#app .welcome) #app :is(.section-head h2, .event-card .event-title) {
+main h1,
+.section-head h2,
+.calendar-month-heading h2,
+.card.event-card .event-title {
   color: var(--discover-navy);
   font-family: var(--discover-heading);
 }
@@ -559,8 +550,8 @@ body:has(#app .welcome) #app .hero .hero-art {
   overflow: hidden;
 }
 
-body:has(#app .welcome) #app .card.event-card {
-  background: var(--discover-card, var(--glass));
+.card.event-card {
+  background: var(--discover-card);
 }
 
 .poster {
@@ -2078,7 +2069,8 @@ footer {
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: 14px;
-  background: var(--surface);
+  background: #fff;
+  color: var(--discover-navy, #002e5d);
   box-shadow: var(--shadow);
 }
 
@@ -2096,7 +2088,7 @@ footer {
 }
 
 #accountMenu > :is(a, button):is(:hover, :focus-visible) {
-  background: var(--hover);
+ background: #edf2f6;
 }
 
 .header-user.profile-avatar:hover,
@@ -2441,3 +2433,242 @@ footer {
 .event-friend-count { display: block; font-weight: 600; }
 .event-friend-names { display: block; color: var(--muted-foreground); }
 .event-friend-notice { margin-bottom: 16px; }
+
+
+/* Discover featured slideshow and recommendations. */
+.discover-feature {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--discover-card);
+  box-shadow: var(--shadow);
+}
+
+.discover-feature-art {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 260px;
+  color: var(--discover-navy);
+  background: var(--discover-background);
+}
+
+.discover-feature-art img {
+  display: block;
+  width: 100%;
+  height: clamp(260px, 34vw, 390px);
+  object-fit: contain;
+}
+
+.discover-feature-art svg {
+  width: 72px;
+  height: 72px;
+}
+
+.discover-feature-copy {
+  align-self: center;
+  min-width: 0;
+  padding: clamp(20px, 4vw, 48px);
+  overflow-wrap: anywhere;
+}
+
+.discover-feature-copy small {
+  color: var(--muted-foreground);
+  font-weight: 700;
+}
+
+.discover-feature-copy h2 {
+  margin-top: 8px;
+  color: var(--discover-navy);
+  font-size: clamp(1.5rem, 3vw, 2.5rem);
+  line-height: 1.16;
+}
+
+.discover-feature .discover-view-event {
+  min-height: 44px;
+  margin-top: 8px;
+  background: var(--discover-navy);
+}
+
+.discover-feature .hero-controls {
+  margin-top: 18px;
+}
+
+.discover-feature .hero-controls button {
+  min-width: 44px;
+  min-height: 44px;
+  border-color: var(--border);
+}
+
+.discover-recommendations .section-head a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--discover-navy);
+  font-weight: 600;
+}
+
+.discover-recommendations .event-card-heading {
+  justify-content: flex-end;
+}
+
+@media (max-width: 760px) {
+  .discover-feature {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .discover-feature-art {
+    min-height: 180px;
+  }
+
+  .discover-feature-art img {
+    height: clamp(180px, 52vw, 290px);
+  }
+}
+
+@media (max-width: 500px) {
+  .discover-recommendations .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+
+/* Solid navy behind event flyers and category graphics */
+.event-card .poster,
+.discover-feature-art {
+  background: #002e5d;
+  color: #fff;
+}
+
+
+.discover-recommendations {
+  margin-top: 28px;
+}
+
+#editSettings,
+#editSettings:hover {
+  background: var(--discover-navy, #002e5d);
+  color: #fff;
+}
+/* Profile settings summary and editor */
+.profile-settings {
+  max-width: 840px;
+  margin: 0 auto;
+}
+
+.profile-settings .settings-panel,
+#settingsForm.settings-panel {
+  background: #fff;
+}
+
+.profile-settings .settings-panel {
+  max-width: none;
+  margin: 20px 0 0;
+  padding: 0 clamp(16px, 4vw, 32px);
+}
+
+.settings-section {
+  padding: 22px 0;
+}
+
+.settings-section + .settings-section {
+  border-top: 1px solid var(--border);
+}
+
+.settings-section h2 {
+  margin: 0 0 12px;
+  color: var(--discover-navy);
+  font-size: 1.5rem;
+}
+
+.settings-profile-row,
+.settings-visibility {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings-identity {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-identity strong {
+  font-size: 1.15rem;
+}
+
+.settings-identity p {
+  margin: 0;
+}
+
+.settings-section #editSettings,
+.settings-account-actions > button {
+  width: auto;
+  margin: 0;
+  min-height: 44px;
+}
+
+.settings-visibility {
+  justify-content: space-between;
+}
+
+.settings-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-chip {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  color: var(--discover-navy);
+  background: var(--discover-background);
+}
+
+#settingsSaved:empty {
+  margin: 0;
+}
+
+.settings-account-actions {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.settings-account-actions .delete-account[open] {
+  flex-basis: 100%;
+}
+
+.settings-account-actions .delete-account > summary {
+  margin: 0;
+  min-height: 44px;
+  border-color: transparent;
+}
+
+#settingsForm button[type="submit"].primary {
+  background: var(--discover-navy);
+}
+
+@media (max-width: 520px) {
+  .settings-profile-row {
+    flex-wrap: wrap;
+  }
+
+  .settings-section #editSettings {
+    flex-basis: 100%;
+  }
+}
+
+
+.discover-recommendations .event-bookmark[aria-pressed="true"] svg {
+  color: var(--discover-navy, #002e5d);
+  fill: currentColor;
+}
