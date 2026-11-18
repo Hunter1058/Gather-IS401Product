@@ -873,7 +873,29 @@ function poster(e, cls = "") {
     </div>`;
 }
 function featuredEvents() {
-  return events.filter((event) => !ended(event)).slice(0, 3);
+  const today = new Date();
+  const todayString = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, "0"),
+    String(today.getDate()).padStart(2, "0")
+  ].join("-");
+
+  const todaysEvents = events.filter(
+    (event) => event.date === todayString
+  );
+
+  if (todaysEvents.length > 0) {
+    return todaysEvents.slice(0, 5);
+  }
+
+  // No events today: show the 5 nearest upcoming events.
+  return events
+    .filter((event) => event.date > todayString)
+    .sort((a, b) =>
+      a.date.localeCompare(b.date) ||
+      String(a.start || "").localeCompare(String(b.start || ""))
+    )
+    .slice(0, 5);
 }
 
 function hero() {
@@ -902,14 +924,23 @@ function hero() {
     </div>
   </section>`;
 }
-
 function home() {
-  const upcoming = events.filter((event) => !ended(event));
-  const matching = upcoming.filter((event) =>
-    eventCategories(event).some((category) => data.interests.includes(category))
-  );
-  const recommended = (matching.length ? matching : upcoming).slice(0, 3);
+const featuredIds = new Set(featuredEvents().map(event => event.id));
 
+const upcoming = events.filter(
+  event => !ended(event) && !featuredIds.has(event.id)
+);
+
+const matching = upcoming.filter(event =>
+  eventCategories(event).some(category =>
+    preferredCategories.has(category)
+  )
+);
+
+const recommended = [
+  ...matching,
+  ...upcoming.filter(event => !matching.includes(event))
+].slice(0, 3);
   return `<div class="welcome">
     <h1>Good things are happening.</h1>
     <p class="muted">Find your next campus event.</p>

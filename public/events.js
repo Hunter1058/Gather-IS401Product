@@ -553,39 +553,61 @@ async function boot() {
       events = listingResult.value.events.map(event => ({
         ...event, poster: event.poster || categoryLabel(event).toUpperCase(),
       }));
-      if (sessionResult.status === "fulfilled") {
-        data.user = sessionResult.value.user;
-        if (data.user) {
-  try {
-    const profile = await api("/settings", {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Gather-Account": data.user.id
+      
+
+if (sessionResult.status === "fulfilled") {
+  data.user = sessionResult.value.user;
+
+  if (data.user) {
+    const userId = data.user.id;
+
+    const [settingsResult, stateResult] = await Promise.allSettled([
+      api("/settings", {
+        headers: {
+          "Content-Type": "application/json",
+          "X-Gather-Account": userId
+        }
+      }),
+      api("/state")
+    ]);
+
+    // Load the user's saved interests.
+    if (settingsResult.status === "fulfilled") {
+      const profile = settingsResult.value;
+      const selected = new Set(profile.categoryIds.map(String));
+
+      preferredCategories = new Set(
+        profile.categories
+          .filter(category => selected.has(String(category.id)))
+          .map(category => category.EventCatagory)
+      );
+    } else {
+      console.warn("Unable to load event preferences:", settingsResult.reason);
+      preferredCategories = new Set();
+    }
+
+    // Load the user's saved events and RSVPs.
+    if (stateResult.status === "fulfilled") {
+      const result = stateResult.value;
+
+      if (result.accountId !== userId) {
+        planLoadError = "Your account changed. Reload to load its plans.";
+      } else {
+        data = { ...data, ...result.state, user: data.user };
+        stateReady = true;
       }
-    });
-
-    const selected = new Set(profile.categoryIds.map(String));
-
-    preferredCategories = new Set(
-      profile.categories
-        .filter(category => selected.has(String(category.id)))
-        .map(category => category.EventCatagory)
-    );
-  } catch (error) {
-    console.warn("Unable to load event preferences:", error);
+    } else {
+      planLoadError = stateResult.reason.message;
+    }
+  } else {
+    stateReady = true;
     preferredCategories = new Set();
   }
+} else {
+  planLoadError = sessionResult.reason.message;
 }
-        if (data.user) {
-          try {
-            const result = await api("/state");
-            if (result.accountId !== data.user.id)
-              throw Error("Your account changed. Reload to load its plans.");
-            data = { ...data, ...result.state, user: data.user };
-            stateReady = true;
-          } catch (error) { planLoadError = error.message; }
-        } else stateReady = true;
-      } else planLoadError = sessionResult.reason.message;
+
+      
       renderUserProfile();
       $("footerMode").textContent = data.user
         ? "Connected to Supabase · Your personal plans"

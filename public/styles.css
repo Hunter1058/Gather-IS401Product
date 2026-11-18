@@ -231,7 +231,7 @@ p {
 /* Shared site header, navigation, brand, and mobile menu. */
 header {
   position: sticky;
-  top: 16px;
+  top: 0;
   z-index: 15;
   max-width: 1256px;
   margin: 16px auto 0;
