@@ -84,10 +84,10 @@ test('event list and details show a bounded, escaped friend attendance summary w
     {id:'b',label:'Blair <friend>'},{id:'c',label:'Casey & friends'},
   ]}}});
   assert.deepEqual(page.records.rsvp,[]);
-  assert.match(page.element('results').innerHTML,/3 friends going/);
+  assert.match(page.element('results').innerHTML,/3 friends RSVP’d/);
   assert.match(page.element('results').innerHTML,/Blair &lt;friend&gt;, Casey &amp; friends · \+1 more/);
   page.run('openEvent("1")');
-  assert.match(page.element('modal').innerHTML,/3 friends going/);
+  assert.match(page.element('modal').innerHTML,/3 friends RSVP’d/);
   page.run('setMode("friendsGoing")');
   assert.match(page.element('results').innerHTML,/Jazz &lt;friends&gt;/);
 });
@@ -273,9 +273,9 @@ test('Bookmarked button combines with filters and updates after unsaving', async
   assert.match(page.element('results').innerHTML, /Unsaved event/);
 });
 
-test('Friends going button switches modes and applies to calendar', async () => {
+test('Friends’ RSVPs button switches modes and applies to calendar', async () => {
   const page = await pageFixture({ friendsGoing: ['1'], saved: ['2'] });
-  assert.match(page.element('toolbar').innerHTML, /Friends going/);
+  assert.match(page.element('toolbar').innerHTML, /Friends’ RSVPs/);
   page.run('events.push({ ...events[0], id: "2", name: "Other event" }); setMode("friendsGoing")');
   assert.match(page.element('results').innerHTML, /Jazz &lt;friends&gt;/);
   assert.doesNotMatch(page.element('results').innerHTML, /Other event/);

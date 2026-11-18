@@ -94,7 +94,7 @@ function poster(event, extra = "") {
   return `
     <div class="${classes}" role="img" aria-label="Flyer for ${esc(event.name)}">
       <span class="shape">${icon(categoryIcon(event))}</span>
-      <small>${esc(event.club || "Not Specified")} · ${pretty(event.date)}</small>
+      <small>${esc(event.club || "Not specified")} · ${pretty(event.date)}</small>
       <strong>${esc(event.poster || categoryLabel(event).toUpperCase())}</strong>
     </div>`;
 }
@@ -244,7 +244,7 @@ function renderToolbar() {
       }</div>
     </details>
   </div>`;
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}"oninput="filters.q=this.value;renderResults();updateSearchSuggestions()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends going"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}"oninput="filters.q=this.value;renderResults();updateSearchSuggestions()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends’ RSVPs"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${filterSelect("Club / organizer","club",[...new Set(events.map((e)=>e.club).filter(Boolean))])}${filterSelect("Major relevance","major",["Information Systems","Business","Humanities","Fine Arts"])}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
   const toolbar = $("toolbar");
   toolbar.className = `toolbar event-toolbar${toolbarCollapsed ? " is-collapsed" : ""}`;
   toolbar.innerHTML = `<div id="eventSearchControls" ${toolbarCollapsed ? "hidden" : ""}>${toolbar.innerHTML}</div><div class="toolbar-collapse-row"><button type="button" class="toolbar-reset" onclick="clearFilters()" aria-label="Reset search and filters">${icon("rotate-ccw")} Reset filters</button><button type="button" id="toolbarCollapseButton" class="toolbar-collapse" aria-controls="eventSearchControls" aria-expanded="${!toolbarCollapsed}" onclick="toggleToolbar()">${icon(toolbarCollapsed ? "chevron-down" : "chevron-up")}<span>${toolbarCollapsed ? "Show search & filters" : "Minimize"}</span></button></div>`;
@@ -338,8 +338,8 @@ function planButton(kind, event, compact = false) {
     aria-label="${esc(label)}" title="${esc(notReady ? "Reload to load your plans" : label)}" ${notReady ? "" : `aria-pressed="${selected}"`}
     aria-busy="${pending}" ${pending || unavailable || notReady ? "disabled" : ""}
     onclick="${saved ? "bookmark" : "rsvp"}('${event.id}')">
-    ${icon(saved ? selected ? "bookmark-check" : "bookmark" : selected ? "check" : "user-check")}
-    ${saved && compact ? "" : `<span>${notReady ? "Unavailable" : pending ? "Saving…" : saved ? selected ? "Saved" : "Save" : unavailable ? "Event ended" : selected ? "Going" : "Going?"}</span>`}
+    ${icon(saved ? "bookmark" : selected ? "check" : "user-check")}
+    ${saved && compact ? "" : `<span>${notReady ? "Unavailable" : pending ? "Saving…" : saved ? selected ? "Saved" : "Save" : unavailable ? "Event ended" : selected ? "RSVP’d" : "RSVP"}</span>`}
   </button>`;
 }
 
@@ -423,7 +423,7 @@ function selectDay(date) {
 }
 function renderResults() {
   if (mode === "friendsGoing" && (!data.user || data.friendsGoingError || !stateReady)) {
-    $("results").innerHTML = `<div class="empty" role="status">${esc(!data.user ? "Sign in to see events your friends are going to." : data.friendsGoingError || "Friends’ attendance could not be loaded. Reload to try again.")}</div>`;
+    $("results").innerHTML = `<div class="empty" role="status">${esc(!data.user ? "Sign in to see events your friends have RSVP’d to." : data.friendsGoingError || "Friends’ attendance could not be loaded. Reload to try again.")}</div>`;
     $("resultCount").textContent = "";
     return;
   }
@@ -436,12 +436,12 @@ function renderResults() {
   $("results").innerHTML=notice + (window.GatherAttendance?.notice(data, stateReady) || "") + (view=== "calendar"?calendar(list):list.length?`<div class="list">${list.map(card).join("")}</div>`:(mode === "past"
   ? `<div class="empty">
       <h3>No past saved events yet.</h3>
-      <p class="muted">Events you've bookmarked or RSVP'd to from the past six months will appear here!</p>
+      <p class="muted">Events you've bookmarked or RSVP’d to from the past six months will appear here!</p>
       <button onclick="clearFilters();setMode('upcoming')">Explore events</button>
     </div>`
   : mode === "rsvp" && !data.rsvp.some(id => events.some(event => event.id === id && !ended(event)))
   ? `<div class="empty">
-      <h3>You haven't RSVP'd to any upcoming events yet!</h3>
+      <h3>You haven't RSVP’d to any upcoming events yet!</h3>
       <p class="muted">Explore upcoming events and RSVP to something that interests you.</p>
       <button onclick="clearFilters();setMode('upcoming')">Explore events</button>
     </div>`
@@ -469,7 +469,7 @@ $("modal").addEventListener("close", () => {
   // A native close event may be queued when the dialog has already reopened.
   if (!$("modal").open) detailId = null;
 });
-function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; const newView = !$("modal").open || detailId !== id; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not Specified")}</b>Major relevance: ${esc(event.major||"Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not Specified")}</p></section>${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); if (newView) void logEventView(id); }
+function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; const newView = !$("modal").open || detailId !== id; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not specified")}</b>Major relevance: ${esc(event.major||"Not specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not specified")}</p></section>${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); if (newView) void logEventView(id); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
 

@@ -2690,16 +2690,30 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 }
 
 
-.discover-recommendations .event-bookmark[aria-pressed="true"] svg {
-  color: var(--discover-navy, #002e5d);
+.event-bookmark[aria-pressed="true"] svg {
   fill: currentColor;
 }
 
 /* Sharing uses a separate native dialog and the existing form/card controls. */
 #eventShareDialog { width: min(520px, calc(100vw - 32px)); }
+#eventShareDialog .event-share-body { display: grid; gap: 16px; padding: 28px; }
+#eventShareDialog .event-share-header { padding-right: 46px; min-width: 0; }
+#eventShareDialog h2, #eventShareDialog h3, #eventShareDialog p { margin: 0; }
+#eventShareDialog h2 { overflow-wrap: anywhere; }
+#eventShareDialog .event-share-header p { margin-top: 8px; }
 #eventShareDialog .event-share-options { flex-wrap: wrap; }
+#eventShareDialog .event-share-link { margin: 0; }
 #eventShareDialog input, #eventShareDialog select { width: 100%; min-width: 0; }
 #eventShareDialog button, .shared-event a { min-height: 44px; }
+#eventShareDialog .event-share-friends { display: grid; gap: 12px; border-top: 1px solid var(--border); padding-top: 18px; }
+#eventShareDialog .event-share-friends label { margin: 0; }
+#eventShareDialog .event-share-friends button { justify-self: start; }
+#eventShareDialog [role="status"]:empty { display: none; }
+#eventShareDialog .event-share-signin { border-top: 1px solid var(--border); padding-top: 18px; }
+@media (max-width: 480px) {
+  #eventShareDialog .event-share-body { padding: 22px 20px; }
+  #eventShareDialog .event-share-options > button { flex: 1 1 auto; }
+}
 .shared-event .primary { display: inline-flex; align-items: center; padding: 10px 16px; border-radius: 8px; text-decoration: none; }
 .friends-tabs { flex-wrap: wrap; }
 

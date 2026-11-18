@@ -59,7 +59,7 @@ const source = (await readFile(new URL('../public/app.js', import.meta.url), 'ut
   vm.runInContext(source, context);
   await context.bootPromise;
   assert.equal(vm.runInContext('mode', context), 'saved');
-  assert.match(element('app').innerHTML, /1 friend going/);
+  assert.match(element('app').innerHTML, /1 friend RSVP’d/);
   assert.match(element('app').innerHTML, /Blair &lt;friend&gt;/);
   assert.match(element('app').innerHTML, /data-event-id="2"/);
   assert.doesNotMatch(element('app').innerHTML, /data-event-id="1"/);

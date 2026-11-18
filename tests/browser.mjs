@@ -78,14 +78,14 @@ try {
   await page.waitForSelector('.event-card');
   assert.equal(await page.locator('.event-card').count(), 2);
   const summary=()=>page.locator('.event-card [data-friend-attendance="1"]');
-  await summary().getByText('2 friends going',{exact:true}).waitFor();
+  await summary().getByText('2 friends RSVP’d',{exact:true}).waitFor();
   assert.match(await summary().textContent(),/Blair <friend>, Casey/);
   assert.equal(await summary().locator('img').count(),0);
-  await page.getByRole('button',{name:'Friends going',exact:true}).click();
+  await page.getByRole('button',{name:'Friends’ RSVPs',exact:true}).click();
   assert.equal(await page.locator('.event-card').count(),1);
   await page.getByRole('button',{name:'All upcoming',exact:true}).click();
   attendance.a['1']={count:'1',friends:[attendance.a['1'].friends[0]]};
-  await page.reload();await summary().getByText('1 friend going',{exact:true}).waitFor();
+  await page.reload();await summary().getByText('1 friend RSVP’d',{exact:true}).waitFor();
   assert.doesNotMatch(await summary().textContent(),/Casey/);
   delete attendance.a['1'];
   await page.reload();await page.waitForSelector('.event-card');

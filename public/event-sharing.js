@@ -39,19 +39,18 @@ function renderEventShare() {
   const event = events.find(item => item.id === state.id);
   const canSend = backendMode === "supabase" && state.owner && data.user?.id === state.owner;
   shareDialog().innerHTML = `<button type="button" class="close" aria-label="Close share dialog" onclick="shareDialog().close()">✕</button>
-    <div class="dialog-body"><h2 id="eventShareTitle" tabindex="-1">Share ${esc(event?.name || "this event")}</h2>
+    <div class="dialog-body event-share-body"><header class="event-share-header"><h2 id="eventShareTitle" tabindex="-1">Share ${esc(event?.name || "this event")}</h2><p class="muted">Share an event link with anyone.</p></header>
     <div class="row event-share-options">${navigator.share ? `<button type="button" onclick="shareEvent('${state.id}')">Share with device</button>` : ""}
     <button type="button" onclick="copyEventLink('${state.id}')">Copy link</button></div>
-    <p class="muted">Share an event link with anyone.</p>
-    <label>Event share link<input id="eventShareLink" readonly value="${esc(eventShareUrl(state.id))}" onclick="this.select()"></label>
+    <label class="event-share-link">Event share link<input id="eventShareLink" readonly value="${esc(eventShareUrl(state.id))}" onclick="this.select()"></label>
     <p id="eventCopyStatus" role="status"></p>
-    ${canSend ? `<hr><h3>Send to Gather Friend</h3>
+    ${canSend ? `<section class="event-share-friends" aria-labelledby="eventShareFriendsTitle"><h3 id="eventShareFriendsTitle">Send to a Gather friend</h3>
       ${!state.loaded ? `<button type="button" onclick="loadEventShareFriends()" ${state.loading || state.blocked ? "disabled" : ""}>${state.loading ? "Loading friends…" : "Choose a friend"}</button>` : `<label for="eventShareFriend">Choose a friend</label><select id="eventShareFriend" onchange="selectEventShareFriend(this.value)" ${state.pending || state.sent ? "disabled" : ""}><option value="">Select a friend</option>${state.friends.map(person => `<option value="${person.id}" ${state.selected === person.id ? "selected" : ""}>${esc(person.name)}</option>`).join("")}</select>
       ${!state.friends.length ? '<p class="muted">No accepted friends yet. Add friends from the Friends page.</p>' : ""}
       ${state.next ? `<button type="button" onclick="loadEventShareFriends(true)" ${state.loading || state.pending || state.sent ? "disabled" : ""}>Load more friends</button>` : ""}
       <button type="button" class="primary" onclick="sendGatherEvent()" ${!state.selected || state.pending || state.sent ? "disabled" : ""} aria-busy="${state.pending}">${state.pending ? "Sending…" : state.sent ? "Sent" : "Send event"}</button>`}
       <p role="status">${state.sent ? "Event sent to your friend." : ""}</p>
-      ${state.error ? `<p role="alert" class="error">${esc(state.error)}</p>` : ""}` : '<p class="muted">Sign in to send events to your Gather friends.</p>'}
+      ${state.error ? `<p role="alert" class="error">${esc(state.error)}</p>` : ""}</section>` : '<p class="muted event-share-signin">Sign in to send events to your Gather friends.</p>'}
     </div>`;
 }
 async function sharingApi(path, owner, options = {}) {
