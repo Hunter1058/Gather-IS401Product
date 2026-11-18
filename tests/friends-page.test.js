@@ -56,7 +56,7 @@ async function fixture({ guest = false, eventsFail = false, stateFail = false, c
     },
   });
   context.window = context;
-  for (const name of ['event-sharing.js', 'event-plans.js', 'friend-actions.js'])
+  for (const name of ['event-sharing.js', 'event-plans.js', 'friend-actions.js', 'profile-photo.js'])
     vm.runInContext(await readFile(new URL('../public/' + name, import.meta.url), 'utf8'), context);
   vm.runInContext((await readFile(new URL('../public/app.js', import.meta.url), 'utf8'))
     .replace(/boot\(\);\s*$/, 'globalThis.bootPromise = boot();'), context);
@@ -200,6 +200,24 @@ test('shared connection dialog escapes names, events and interests and hides pri
   await f.run(`openFriend('${B}')`);
   const privateHtml=f.run("document.getElementById('modal').innerHTML");
   assert.match(privateHtml,/This profile is private/);assert.doesNotMatch(privateHtml,/Jazz|Casey|Arts/);
+});
+
+test('profile details use the freshly fetched public photo and omit private, absent and unsafe photos', async()=>{
+  const f = await fixture();
+  f.db.users[1].photo_url = 'https://example.org/photo.jpg?x=1&y=2';
+  await f.run(`openFriend('${B}')`);
+  const html = () => f.run("document.getElementById('modal').innerHTML");
+  assert.match(html(), /id="friendDetailPhoto"/);
+  assert.match(html(), /photo.jpg\?x=1&amp;y=2/);
+  assert.match(html(), /Enlarge profile photo of Blair &lt;friend&gt;/);
+  for (const privateProfile of [true, false]) {
+    f.db.users[1].is_private = privateProfile;
+    if (!privateProfile) f.db.users[1].photo_url = 'javascript:alert(1)';
+    await f.run(`openFriend('${B}')`);
+    assert.doesNotMatch(html(), /id="friendDetailPhoto"|javascript:|photo.jpg/);
+  }
+  f.db.users[1].photo_url = null;
+  await f.run(`openFriend('${B}')`); assert.doesNotMatch(html(), /id="friendDetailPhoto"/);
 });
 
 test('closing the shared details dialog ignores late reads and does not reopen it', async()=>{

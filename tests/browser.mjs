@@ -30,7 +30,8 @@ try {
   const dateKey = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   const events = ['1', '2'].map(id => ({ id, name: id === '1' ? 'Jazz & friends' : 'Campus games', category: 'Arts', location: 'Music Building', date: dateKey, start: '18:30:00', end: null, description: 'A friendly campus event.', poster: 'ARTS', friends: [], price: 0, food: false, club: 'Campus organizer', major: 'All majors' }));
   let account = 'a', failure = false, wait = 0, sessionFailure = false, plansFailure = false;
-  const writes = [];
+  const writes = [], views = [];
+  let viewFailure = false;
   let attendanceFailure = false;
   const attendance = {a:{'1':{count:'2',friends:[
     {id:'11111111-1111-4111-8111-111111111111',label:'Blair <friend>'},
@@ -49,6 +50,10 @@ try {
     else if (path === '/api/state' && plansFailure) { status = 503; body = { error: 'Plans service unavailable' }; }
     else if (path === '/api/auth/session') body = { user: account ? { id: account, name: 'Student ' + account } : null };
     else if (path === '/api/state') body = { accountId: account, state: { ...records[account], friendAttendance:attendanceFailure?{}:attendance[account], friendsGoing:attendanceFailure?[]:Object.keys(attendance[account]), friendsGoingError:attendanceFailure?'Attendance unavailable':'', attended: [], friends: [], interests: [], reminders: {}, surveys: {} } };
+    else if (/\/api\/events\/\d+\/view$/.test(path)) {
+      views.push({path, account:req.headers()['x-gather-account']});
+      status = viewFailure ? 503 : 201; body = viewFailure ? {error:'Unavailable'} : {logged:true};
+    }
     else if (/\/api\/events\/\d+\/(bookmark|rsvp)$/.test(path)) {
       if (wait) await new Promise(resolve => setTimeout(resolve, wait));
       if (failure) { status = 500; body = { error: 'Unable to save. Try again.' }; failure = false; }
@@ -259,25 +264,52 @@ try {
   assert.equal(await page.locator('#userButton').textContent(), 'SA');
   records.a.saved = ['1'];
   await page.goto(base + '/');
-  await page.waitForSelector('.grid .card .event-share');
-  assert.equal(await page.locator('.grid .card .event-rsvp').count(), 2);
-  assert.equal(await page.locator('.hero-art .event-share').count(), 1);
-  assert.equal(await page.locator('.mini-event .event-share').count(), 1);
+  await page.waitForSelector('.discover-view-event');
+  assert.equal(await page.locator('.grid .card .event-title').count(), 2);
+  await page.locator('.discover-view-event').click();
+  await page.locator('#modal .event-share').waitFor();
   await page.evaluate(() => {
     navigator.share = async payload => { window.sharedEvent = payload; };
   });
-  await page.locator('.grid .card .event-share').first().click();
+  await page.locator('#modal .event-share').click();
   const shared = await page.evaluate(() => window.sharedEvent);
   assert.equal(shared.url, base + '/events?event=1');
-  await page.locator('.grid .card [data-plan-kind="rsvp"]').first().click();
-  await page.waitForFunction(() => document.querySelector('.grid .card [data-plan-kind="rsvp"]')?.getAttribute('aria-pressed') === 'true');
+  await page.locator('#modal [data-plan-kind="rsvp"]').click();
+  await page.waitForFunction(() => document.querySelector('#modal [data-plan-kind="rsvp"]')?.getAttribute('aria-pressed') === 'true');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'home mobile should not overflow');
   await page.goto(shared.url);
   await page.waitForFunction(() => document.getElementById('modal').open);
   assert.match(await page.locator('dialog h2').textContent(), /Jazz/);
+  // Exercise native Escape and redraw behavior in both real page implementations.
+  for (const path of ['/events', '/']) {
+    await page.goto(base + path);
+    await page.waitForFunction(() => backendMode === 'supabase' && events.length === 2 && data.user?.id === 'a' && stateReady);
+    let start = views.length;
+    const opened = page.waitForResponse(response => response.url().endsWith('/events/1/view'));
+    await page.evaluate(() => openEvent('1')); await opened;
+    assert.equal(views.length, start + 1);
+    await page.locator('#modal [data-plan-kind="bookmark"]').click();
+    await page.waitForFunction(() => !plans.busy('bookmark', '1'));
+    await page.locator('#modal [data-plan-kind="rsvp"]').click();
+    await page.waitForFunction(() => !plans.busy('rsvp', '1'));
+    assert.equal(views.length, start + 1);
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.getElementById('modal').open && detailId === null);
+    const reopen = page.waitForResponse(response => response.url().endsWith('/events/1/view'));
+    await page.evaluate(() => openEvent('1')); await reopen;
+    assert.equal(views.length, start + 2);
+    await page.getByRole('button', {name:'Close event details'}).click();
+    viewFailure = true;
+    const failed = page.waitForResponse(response => response.url().endsWith('/events/2/view'));
+    await page.evaluate(() => openEvent('2')); assert.equal((await failed).status(), 503);
+    assert.equal(await page.locator('#modal').evaluate(el => el.open), true);
+    await page.evaluate(() => openEvent('2'));
+    assert.equal(views.length, start + 3);
+    viewFailure = false;
+  }
   assert.deepEqual(errors, []);
   assert(writes.every(write => !('UserID' in write.payload)));
-  console.log('PASS: persistence/reload, errors, pending, focus, concurrent actions, filters, Saved integration, account isolation, modal, guest redirect, mobile, account-service outages, login/reload, shared event links, home Share/Going controls, friend attendance badges/filter/reload/errors/account isolation.');
+  console.log('PASS: persistence/reload, errors, pending, focus, concurrent actions, filters, Saved integration, account isolation, modal, guest redirect, mobile, account-service outages, login/reload, shared event links, home Share/Going controls, view logging/redraw suppression/native Escape/failures on both pages, friend attendance badges/filter/reload/errors/account isolation.');
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

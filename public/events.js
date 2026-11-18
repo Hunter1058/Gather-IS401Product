@@ -146,19 +146,24 @@ function filteredEvents() {
 
     const withinSixMonths =
       new Date(event.date + "T23:59:59") >= sixMonthsAgo;
-      const allowed =
-      mode === "past"
-        ? past && withinSixMonths &&
-          (data.saved.includes(event.id) || data.rsvp.includes(event.id))
-        : mode === "saved"
-        ? data.saved.includes(event.id) && !past
-        : mode === "savedPast"
-        ? data.saved.includes(event.id) && past
-        : mode === "friendsGoing"
-        ? (data.friendsGoing || []).includes(event.id) && !past
-        : mode === "rsvp"
-        ? data.rsvp.includes(event.id) && !past
-        : !past;
+
+  const allowed =
+  view === "calendar" && mode === "upcoming"
+    ? true
+    : mode === "past"
+    ? past && withinSixMonths &&
+      (data.saved.includes(event.id) || data.rsvp.includes(event.id))
+    : mode === "saved"
+    ? data.saved.includes(event.id) && !past
+    : mode === "savedPast"
+    ? data.saved.includes(event.id) && past
+    : mode === "friendsGoing"
+    ? (data.friendsGoing || []).includes(event.id) && !past
+    : mode === "rsvp"
+    ? data.rsvp.includes(event.id) && !past
+    : !past;
+
+
     return allowed && smartEventMatch(event, filters.q) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.club||(event.club||"")===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus);
   }).sort(personalizedEventSort);
 }
@@ -276,8 +281,45 @@ window.addEventListener("scroll", () => {
   if (toolbarCollapsed) positionToolbarReopen();
 }, { passive: true });
 
+function updateActiveNav() {
+  document.querySelectorAll(
+    'a[href="/events"], a[href="/events?view=calendar"]'
+  ).forEach(link => {
+    const isCalendar = link.getAttribute("href").includes("calendar");
+    const isActive = isCalendar
+      ? view === "calendar"
+      : view !== "calendar";
+
+    link.classList.toggle("active", isActive);
+
+    if (isActive) {
+      link.setAttribute("aria-current", "page");
+    } else {
+      link.removeAttribute("aria-current");
+    }
+  });
+}
+
+
 // Display switching: toggling changes the URL as well as the rendered page.
-function toggleView() { view=view=== "calendar"?"list":"calendar"; history.replaceState(null,"",view=== "calendar"?"/events?view=calendar":"/events"); $("pageTitle").textContent=view=== "calendar"?"Your campus calendar.":"What’s happening at BYU."; renderToolbar(); renderResults(); }
+function toggleView() {
+  view = view === "calendar" ? "list" : "calendar";
+
+  history.replaceState(
+    null,
+    "",
+    view === "calendar" ? "/events?view=calendar" : "/events"
+  );
+
+  $("pageTitle").textContent =
+    view === "calendar"
+      ? "Your campus calendar."
+      : "What’s happening at BYU.";
+
+  updateActiveNav();
+  renderToolbar();
+  renderResults();
+}
 
 // Both list and modal controls use the same per-event persistence controller.
 function bookmark(id) { return plans.set("bookmark", id); }
@@ -409,7 +451,25 @@ function renderResults() {
 
 function showModal(html) { $("modal").innerHTML=html; if(!$("modal").open)$("modal").showModal(); icons(); }
 function closeModal() { if($("modal").open)$("modal").close(); detailId = null; }
-function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not Specified")}</b>Major relevance: ${esc(event.major||"Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not Specified")}</p></section>${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); }
+// One background attempt per opened detail session; never retry analytics writes.
+async function logEventView(id) {
+  if (backendMode !== "supabase" || !data.user?.id) return;
+  try {
+    const response = await fetch("/api/events/" + encodeURIComponent(id) + "/view", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-Gather-Account": data.user.id },
+      body: "{}",
+    });
+    if (!response.ok) console.warn("Event view logging failed:", response.status);
+  } catch {
+    console.warn("Event view logging failed: network error");
+  }
+}
+$("modal").addEventListener("close", () => {
+  // A native close event may be queued when the dialog has already reopened.
+  if (!$("modal").open) detailId = null;
+});
+function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; const newView = !$("modal").open || detailId !== id; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not Specified")}</b>Major relevance: ${esc(event.major||"Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not Specified")}</p></section>${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); if (newView) void logEventView(id); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
 
@@ -511,10 +571,12 @@ async function boot() {
   }
 
   $("pageTitle").textContent = view === "calendar"
-    ? "Your campus calendar."
-    : "What’s happening at BYU.";
-  renderToolbar();
-  renderResults();
+  ? "Your campus calendar."
+  : "What’s happening at BYU.";
+
+updateActiveNav(); // Highlight the correct navigation button
+renderToolbar();
+renderResults();
   const sharedId = new URL(location.href).searchParams.get("event");
   if (sharedId) {
     if (events.some(event => event.id === sharedId)) openEvent(sharedId);
