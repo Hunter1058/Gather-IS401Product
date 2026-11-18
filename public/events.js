@@ -94,7 +94,7 @@ function poster(event, extra = "") {
   return `
     <div class="${classes}" role="img" aria-label="Flyer for ${esc(event.name)}">
       <span class="shape">${icon(categoryIcon(event))}</span>
-    <small>${event.club ? `${esc(event.club)} · ` : ""}${pretty(event.date)}</small>
+      <small>${esc(event.club || "Not Specified")} · ${pretty(event.date)}</small>
       <strong>${esc(event.poster || categoryLabel(event).toUpperCase())}</strong>
     </div>`;
 }
@@ -119,10 +119,29 @@ function requireAccount() {
   if (!data.user) { closeModal(); location.assign("/login"); return false; }
   return true;
 }
-function toggleMenu() {
-  if (window.GatherMobileNav) { window.GatherMobileNav.toggle(); return; } const open=$("drawer").hidden; $("drawer").hidden=!open; $("menuButton").setAttribute("aria-expanded",String(open)); }
+function toggleMenu() { const open=$("drawer").hidden; $("drawer").hidden=!open; $("menuButton").setAttribute("aria-expanded",String(open)); }
 
 // Filtering and search: the filters object describes the current query.
+function campusType(value) {
+  const campus = String(value || "").trim().toLowerCase();
+
+  if (["on-campus", "on campus", "oncampus"].includes(campus)) {
+    return "on-campus";
+  }
+
+  if (["off-campus", "off campus", "offcampus"].includes(campus)) {
+    return "off-campus";
+  }
+
+  return campus;
+}
+
+function eventBuilding(event) {
+  return String(event.location || "")
+    .split(",")[0]
+    .replace(/\s+(?:(?:room|rm\.?|suite)\s*)?\d+[a-z]?\s*$/i, "")
+    .trim();
+}
 function setMode(next) { mode=next; selectedDay=""; renderToolbar(); renderResults(); }
 function setFilter(keyName, value) {
   filters[keyName] = value;
@@ -132,24 +151,15 @@ function setFilter(keyName, value) {
   }
   renderResults();
 }
-function categoryFilterSummary() {
-  if (!filters.category.length) return "All categories";
-  return `${filters.category.length} categor${filters.category.length === 1 ? "y" : "ies"} selected`;
-}
 function toggleCategory(category, checked) {
   filters.category = checked
     ? [...new Set([...filters.category, category])]
     : filters.category.filter(value => value !== category);
-  $("categoryFilterSummary").textContent = categoryFilterSummary();
+
+  renderToolbar();
   renderResults();
 }
 function clearFilters() { Object.keys(filters).forEach((k)=>filters[k]=Array.isArray(filters[k])?[]:typeof filters[k]==="boolean"?false:""); filtersOpen=false; renderToolbar(); renderResults(); }
-function campusType(value) {
-  const normalized = String(value || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
-  if (normalized.includes("off-campus") || normalized.startsWith("off")) return "off-campus";
-  if (normalized.includes("on-campus") || normalized.startsWith("on")) return "on-campus";
-  return normalized;
-}
 function filteredEvents() {
   return events.filter((event) => {
     const past=ended(event);
@@ -176,7 +186,7 @@ function filteredEvents() {
     : !past;
 
 
-    return allowed && smartEventMatch(event, filters.q) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||eventBuilding(event)===filters.location) && (!filters.club||event.club===filters.club) && (!filters.major||event.major===filters.major||event.major=== "All majors") && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||campusType(event.campusLocation)===filters.campus);
+        return allowed && smartEventMatch(event, filters.q) && (!filters.category.length || filters.category.some(category => eventCategories(event).includes(category))) && (!filters.location || eventBuilding(event) === filters.location) && (!filters.from || event.date >= filters.from) && (!filters.to || event.date <= filters.to) && (!filters.campus || campusType(event.campusLocation) === filters.campus);
   }).sort(personalizedEventSort);
 }
 function options(values, current) { return `<option value="">All</option>`+values.map((value)=>`<option ${value===current?"selected":""}>${esc(value)}</option>`).join(""); }
@@ -225,11 +235,9 @@ function renderToolbar() {
     ? availableCategories
     : [...new Set(events.flatMap(eventCategories))].sort();
   const locationValues = [...new Set(events
-    .filter(event => !filters.campus || campusType(event.campusLocation) === filters.campus)
-    .map(eventBuilding)
-    .filter(Boolean))].sort();
-  const clubValues = [...new Set(events.map(event => event.club).filter(Boolean))].sort();
-  const majorValues = [...new Set(events.map(event => event.major).filter(Boolean))].sort();
+  .filter(event => !filters.campus || campusType(event.campusLocation) === filters.campus)
+  .map(eventBuilding)
+  .filter(Boolean))].sort();
   const categoryEmojis = {
     "Sports": "🏀",
     "Arts": "🎨",
@@ -250,7 +258,7 @@ function renderToolbar() {
   const categoryCheckboxes = `<div class="category-filter">
     <label>Category / type</label>
     <details class="category-dropdown">
-      <summary id="categoryFilterSummary">${categoryFilterSummary()}</summary>
+     <summary id="categoryFilterSummary">${filters.category.length ? filters.category.length + (filters.category.length === 1 ? " category selected" : " categories selected") : "All categories"}</summary>
       <div class="category-options">${
         categoryValues.map(category => `<label><input type="checkbox" value="${esc(category)}" ${
           filters.category.includes(category) ? "checked" : ""
@@ -258,18 +266,12 @@ function renderToolbar() {
       }</div>
     </details>
   </div>`;
-  const optionalFilters = [
-    clubValues.length ? filterSelect("Club / organizer", "club", clubValues) : "",
-    majorValues.length ? filterSelect("Major relevance", "major", majorValues) : "",
-  ].join("");
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}"oninput="filters.q=this.value;renderResults();updateSearchSuggestions()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends’ RSVPs"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}${optionalFilters}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}"oninput="filters.q=this.value;renderResults();updateSearchSuggestions()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends’ RSVPs"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
   const toolbar = $("toolbar");
   toolbar.className = `toolbar event-toolbar${toolbarCollapsed ? " is-collapsed" : ""}`;
   toolbar.innerHTML = `<div id="eventSearchControls" ${toolbarCollapsed ? "hidden" : ""}>${toolbar.innerHTML}</div><div class="toolbar-collapse-row"><button type="button" class="toolbar-reset" onclick="clearFilters()" aria-label="Reset search and filters">${icon("rotate-ccw")} Reset filters</button><button type="button" id="toolbarCollapseButton" class="toolbar-collapse" aria-controls="eventSearchControls" aria-expanded="${!toolbarCollapsed}" onclick="toggleToolbar()">${icon(toolbarCollapsed ? "chevron-down" : "chevron-up")}<span>${toolbarCollapsed ? "Show search & filters" : "Minimize"}</span></button></div>`;
-  const reopenButton = $("toolbarReopenButton");
-  reopenButton.hidden = !toolbarCollapsed;
-  reopenButton.setAttribute("aria-expanded", String(toolbarCollapsed));
-  reopenButton.setAttribute("aria-label", "Show search & filters");
+  $("toolbarReopenButton").hidden = !toolbarCollapsed;
+  $("toolbarReopenButton").setAttribute("aria-expanded", String(toolbarCollapsed));
   positionToolbarReopen();
   icons();
 }
@@ -356,11 +358,11 @@ function planButton(kind, event, compact = false) {
     : `${selected ? "Cancel RSVP for" : "RSVP to"} ${event.name}`;
   return `<button type="button" class="${saved ? "event-bookmark" : "event-rsvp"}"
     data-plan-kind="${kind}" data-event-id="${esc(event.id)}"
-    aria-label="${esc(unavailable ? `Event ended: ${label}` : label)}" title="${esc(notReady ? "Reload to load your plans" : unavailable ? "Event ended" : label)}" ${notReady ? "" : `aria-pressed="${selected}"`}
+    aria-label="${esc(label)}" title="${esc(notReady ? "Reload to load your plans" : label)}" ${notReady ? "" : `aria-pressed="${selected}"`}
     aria-busy="${pending}" ${pending || unavailable || notReady ? "disabled" : ""}
-    onclick="event.stopPropagation();${saved ? "bookmark" : "rsvp"}('${event.id}')">
-    ${icon(saved ? "bookmark" : selected ? "check" : "user-check")}
-    ${saved && compact ? "" : `<span>${notReady ? "Unavailable" : pending ? "Saving…" : unavailable ? "Event ended" : saved ? selected ? "Saved" : "Save" : selected ? "RSVP’d" : "RSVP"}</span>`}
+    onclick="${saved ? "bookmark" : "rsvp"}('${event.id}')">
+    ${icon(saved ? selected ? "bookmark-check" : "bookmark" : selected ? "check" : "user-check")}
+    ${saved && compact ? "" : `<span>${notReady ? "Unavailable" : pending ? "Saving…" : saved ? selected ? "Saved" : "Save" : unavailable ? "Event ended" : selected ? "Going" : "Going?"}</span>`}
   </button>`;
 }
 
@@ -378,7 +380,7 @@ function card(event) {
       <h3><button type="button" class="event-title" onclick="openEvent('${event.id}')" aria-label="View details for ${esc(event.name)}">${esc(event.name)}</button></h3>
       <div class="metadata">
         <span>${icon("clock")} ${pretty(event.date)} · ${time(event.start)}${event.end ? "–" + time(event.end) : ""}</span>
-        ${event.location?.trim() ? `<span>${icon("map-pin")} ${eventLocationLink(event)}</span>` : ""}
+        <span>${icon("map-pin")} ${eventLocationLink(event)}</span>
       </div>
       ${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}
       <div class="card-actions event-card-actions">
@@ -407,7 +409,7 @@ function calendar(eventsToShow) {
       const isToday = date === key(today);
       cells.push(`<button type="button" class="day calendar-day ${date === selectedDay ? "selected-day" : ""}" aria-label="${esc(pretty(date, true))}, ${dayEvents.length} events. Open day schedule" aria-haspopup="dialog" onclick="selectDay('${date}')">
         <span class="daynum ${isToday ? "today" : ""}" ${isToday ? 'aria-current="date"' : ""}>${day}</span>
-        <span class="calendar-previews">        ${dayEvents.slice(0, 2).map(event => `<span class="calevent"><span class="calendar-event-time">${time(event.start)}</span><span class="calendar-event-name">${esc(event.name)}</span></span>`).join("")}</span>
+        <span class="calendar-previews">${dayEvents.slice(0, 2).map(event => `<span class="calevent"><span class="calendar-event-time">${time(event.start)}</span><span class="calendar-event-name">${esc(event.name)}</span></span>`).join("")}</span>
         ${dayEvents.length > 2 ? `<span class="calendar-more">+${dayEvents.length - 2} more</span>` : ""}
         ${dayEvents.length ? `<span class="calendar-mobile-count">${dayEvents.length}</span>` : ""}
       </button>`);
@@ -444,7 +446,7 @@ function selectDay(date) {
 }
 function renderResults() {
   if (mode === "friendsGoing" && (!data.user || data.friendsGoingError || !stateReady)) {
-    $("results").innerHTML = `<div class="empty" role="status">${esc(!data.user ? "Sign in to see events your friends have RSVP’d to." : data.friendsGoingError || "Friends’ attendance could not be loaded. Reload to try again.")}</div>`;
+    $("results").innerHTML = `<div class="empty" role="status">${esc(!data.user ? "Sign in to see events your friends are going to." : data.friendsGoingError || "Friends’ attendance could not be loaded. Reload to try again.")}</div>`;
     $("resultCount").textContent = "";
     return;
   }
@@ -457,12 +459,12 @@ function renderResults() {
   $("results").innerHTML=notice + (window.GatherAttendance?.notice(data, stateReady) || "") + (view=== "calendar"?calendar(list):list.length?`<div class="list">${list.map(card).join("")}</div>`:(mode === "past"
   ? `<div class="empty">
       <h3>No past saved events yet.</h3>
-      <p class="muted">Events you've bookmarked or RSVP’d to from the past six months will appear here!</p>
+      <p class="muted">Events you've bookmarked or RSVP'd to from the past six months will appear here!</p>
       <button onclick="clearFilters();setMode('upcoming')">Explore events</button>
     </div>`
   : mode === "rsvp" && !data.rsvp.some(id => events.some(event => event.id === id && !ended(event)))
   ? `<div class="empty">
-      <h3>You haven't RSVP’d to any upcoming events yet!</h3>
+      <h3>You haven't RSVP'd to any upcoming events yet!</h3>
       <p class="muted">Explore upcoming events and RSVP to something that interests you.</p>
       <button onclick="clearFilters();setMode('upcoming')">Explore events</button>
     </div>`
@@ -490,19 +492,7 @@ $("modal").addEventListener("close", () => {
   // A native close event may be queued when the dialog has already reopened.
   if (!$("modal").open) detailId = null;
 });
-function openEvent(id) {
-  const event = events.find(item => item.id === id);
-  if (!event) return;
-  const newView = !$("modal").open || detailId !== id;
-  const admissionDetails = [eventAdmission(event), eventFood(event)].filter(Boolean);
-  const hostDetails = [
-    event.club ? `<div><span class="muted">Hosted by</span><b>${esc(event.club)}</b></div>` : "",
-    event.major ? `<div><span class="muted">Major relevance</span><b>${esc(event.major)}</b></div>` : "",
-  ].join("");
-  detailId = id;
-  showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}${admissionDetails.length?`<div><span class="muted">Admission &amp; food</span>${admissionDetails.map(detail => `<b>${esc(detail)}</b>`).join("")}</div>`:""}${hostDetails}</div>${event.description?.trim()?`<section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description)}</p></section>`:""}${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`);
-  if (newView) void logEventView(id);
-}
+function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; const newView = !$("modal").open || detailId !== id; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}</div>${event.description ? `<section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description)}</p></section>` : ""}${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); if (newView) void logEventView(id); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
 
@@ -633,16 +623,27 @@ updateActiveNav(); // Highlight the correct navigation button
 renderToolbar();
 renderResults();
   const sharedId = new URL(location.href).searchParams.get("event");
-  if (sharedId) {
-    if (!events.some(event => event.id === sharedId) && /^[1-9]\d{0,18}$/.test(sharedId)) {
-      try {
-        const listing = await api("/events?eventId=" + encodeURIComponent(sharedId));
-        events.push(...listing.events.filter(event => event.id === sharedId));
-      } catch { console.warn("Shared event could not be loaded."); }
+
+if (sharedId) {
+  if (!events.some(event => event.id === sharedId)) {
+    try {
+      const result = await api(`/events?eventId=${encodeURIComponent(sharedId)}`);
+      const sharedEvent = result.events?.find(event => String(event.id) === sharedId);
+
+      if (sharedEvent) {
+        events.push(sharedEvent);
+      }
+    } catch (error) {
+      console.error("Unable to load shared event:", error);
     }
-    if (events.some(event => event.id === sharedId)) openEvent(sharedId);
-    else toast("This event is no longer available.");
   }
+
+  if (events.some(event => event.id === sharedId)) {
+    openEvent(sharedId);
+  } else {
+    toast("This event is no longer available.");
+  }
+}
 }
 
 $("modal").addEventListener("click",(event)=>{ if(event.target===$("modal")) closeModal(); });

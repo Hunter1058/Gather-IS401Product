@@ -245,12 +245,15 @@ test('unknown event details do not claim free admission or food availability', a
 
 test('category selection counts update when multiple types are toggled on and off', async () => {
   const page = await pageFixture();
+
   page.run('toggleCategory("Arts", true); toggleCategory("Spiritual", true)');
-  assert.equal(page.element('categoryFilterSummary').textContent, '2 categories selected');
+  assert.match(page.element('toolbar').innerHTML, /2 categories selected/);
+
   page.run('toggleCategory("Arts", false)');
-  assert.equal(page.element('categoryFilterSummary').textContent, '1 category selected');
+  assert.match(page.element('toolbar').innerHTML, /1 category selected/);
+
   page.run('toggleCategory("Spiritual", false)');
-  assert.equal(page.element('categoryFilterSummary').textContent, 'All categories');
+  assert.match(page.element('toolbar').innerHTML, /All categories/);
 });
 
 test('campus and building filters normalize values and remove room numbers', async () => {
@@ -265,17 +268,33 @@ test('campus and building filters normalize values and remove room numbers', asy
   assert.match(page.element('toolbar').innerHTML, /<option\s*>Wilkinson Center<\/option>/);
 });
 
-test('organizer and major filters only offer real event values and match them', async () => {
+test('organizer and major filters remain removed', async () => {
   const page = await pageFixture();
-  assert.doesNotMatch(page.element('toolbar').innerHTML, /Club \/ organizer|Major relevance/);
-  page.run(`events[0].club = "BYU Arts";
+
+  page.run(`
+    events[0].club = "BYU Arts";
     events[0].major = "Fine Arts";
-    events.push({...events[0], id:"2", name:"Business event", club:"Business Society", major:"Business"});
-    renderToolbar()`);
-  assert.match(page.element('toolbar').innerHTML, /Club \/ organizer/);
-  assert.match(page.element('toolbar').innerHTML, /Major relevance/);
-  page.run('setFilter("club", "BYU Arts"); setFilter("major", "Fine Arts")');
-  assert.deepEqual(page.run('filteredEvents().map(event => event.id)'), ['1']);
+    events.push({
+      ...events[0],
+      id: "2",
+      name: "Business event",
+      club: "Business Society",
+      major: "Business"
+    });
+    renderToolbar();
+  `);
+
+  const toolbar = page.element('toolbar').innerHTML;
+
+  assert.doesNotMatch(toolbar, /Club \/ organizer|Major relevance/);
+  assert.match(toolbar, /Category \/ type/);
+  assert.match(toolbar, /Campus location/);
+  assert.match(toolbar, /Location/);
+
+  assert.deepEqual(
+    page.run('filteredEvents().map(event => event.id)'),
+    ['1', '2']
+  );
 });
 
 test('calendar day schedule bookmarks without opening event details', async () => {
