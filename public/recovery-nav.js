@@ -9,6 +9,7 @@
   const background = [document.querySelector('header'), document.querySelector('main'), document.querySelector('footer')];
 
   function setMenu(open) {
+    if (window.GatherMobileNav) { window.GatherMobileNav.set(open); return; }
     drawer.hidden = !open;
     menuButton.setAttribute('aria-expanded', String(open));
     menuButton.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
@@ -27,7 +28,7 @@
   menuButton.addEventListener('click', () => setMenu(drawer.hidden));
   closeButton.addEventListener('click', () => setMenu(false));
   document.addEventListener('keydown', event => {
-    if (drawer.hidden) return;
+    if (window.GatherMobileNav || drawer.hidden) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       setMenu(false);

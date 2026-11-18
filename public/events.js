@@ -119,7 +119,8 @@ function requireAccount() {
   if (!data.user) { closeModal(); location.assign("/login"); return false; }
   return true;
 }
-function toggleMenu() { const open=$("drawer").hidden; $("drawer").hidden=!open; $("menuButton").setAttribute("aria-expanded",String(open)); }
+function toggleMenu() {
+  if (window.GatherMobileNav) { window.GatherMobileNav.toggle(); return; } const open=$("drawer").hidden; $("drawer").hidden=!open; $("menuButton").setAttribute("aria-expanded",String(open)); }
 
 // Filtering and search: the filters object describes the current query.
 function setMode(next) { mode=next; selectedDay=""; renderToolbar(); renderResults(); }

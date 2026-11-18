@@ -25,6 +25,7 @@ function go(page) {
   location.assign(({ home: "/", saved: "/#saved", login: "/login", signup: "/signup" })[page] || "/");
 }
 function toggleMenu() {
+  if (window.GatherMobileNav) { window.GatherMobileNav.toggle(); return; }
   const open = $("drawer").hidden;
   $("drawer").hidden = !open;
   $("menuButton").setAttribute("aria-expanded", String(open));

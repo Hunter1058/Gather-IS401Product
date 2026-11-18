@@ -1,5 +1,6 @@
 // Browser contract checks use mocked APIs; live Supabase/RLS is a separate check.
 import assert from 'node:assert/strict';
+import {checkDrawer} from './helpers/mobile-layout.js';
 import http from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
@@ -235,6 +236,8 @@ try {
   await mkdir(new URL('../artifacts/', import.meta.url), { recursive: true });
   await page.screenshot({ path: new URL('../artifacts/events-desktop.png', import.meta.url).pathname, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
+  await checkDrawer(page, control('bookmark'));
+  await checkDrawer(page, page.locator('.event-card .event-share').first());
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'mobile should not overflow');
   assert.equal(await control('bookmark').evaluate(el => el.getBoundingClientRect().height >= 44), true);
   assert.equal(await control('rsvp').evaluate(el => el.getBoundingClientRect().height >= 44), true);
@@ -263,9 +266,19 @@ try {
   await page.reload(); await page.waitForSelector('.event-card');
   assert.equal(await page.locator('#userButton').textContent(), 'SA');
   records.a.saved = ['1'];
+  // Six events exercise a recommendation outside the five featured slides.
+  events.push(...['3','4','5','6'].map(id => ({...events[0], id, name:'More campus plans '+id})));
   await page.goto(base + '/');
   await page.waitForSelector('.discover-view-event');
-  assert.equal(await page.locator('.grid .card .event-title').count(), 2);
+  assert.equal(await page.locator('.discover-recommendations .card .event-title').count(), 1);
+  await checkDrawer(page, page.locator('.discover-recommendations [data-plan-kind="bookmark"]').first());
+  assert.equal(await page.locator('.discover-feature--no-image').count(), 1);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({width,height:900});
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert((await page.locator('.discover-recommendations .card').boundingBox()).height < 260, 'Discover recommendations do not reserve tall empty cards');
+  }
+  await page.setViewportSize({width:390,height:844});
   await page.locator('.discover-view-event').click();
   await page.locator('#modal .event-share').waitFor();
   await page.evaluate(() => {
@@ -279,6 +292,7 @@ try {
   await page.locator('#modal [data-plan-kind="rsvp"]').click();
   await page.waitForFunction(() => document.querySelector('#modal [data-plan-kind="rsvp"]')?.getAttribute('aria-pressed') === 'true');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'home mobile should not overflow');
+  events.splice(2);
   await page.goto(shared.url);
   await page.waitForFunction(() => document.getElementById('modal').open);
   assert.match(await page.locator('dialog h2').textContent(), /Jazz/);

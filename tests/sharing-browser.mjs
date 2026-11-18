@@ -73,10 +73,10 @@ try {
   }
   const {page}=await makeContext(A);
   for(const path of ['/events','/']) {
-    await page.goto(base+path);await page.locator('.event-title').first().waitFor();
+    await page.goto(base+path);await page.locator('.event-title, .discover-view-event').first().waitFor();
     const beforeViews=await count('view'),before=await count();
     const viewed=page.waitForResponse(r=>r.url().endsWith('/events/1/view'));
-    await page.locator('.event-title').first().click();await viewed;
+    await page.locator('.event-title, .discover-view-event').first().click();await viewed;
     assert.equal(await count('view'),beforeViews+1);
     await page.locator('#modal .event-share').click();
     await page.locator('#eventShareDialog').waitFor();assert.equal(await count(),before);
@@ -112,7 +112,7 @@ try {
     assert.equal(await page.locator('#modal').evaluate(el=>el.open),true);
     await page.keyboard.press('Escape');await page.waitForFunction(()=>!document.getElementById('modal').open);
     const reopened=page.waitForResponse(r=>r.url().endsWith('/events/1/view'));
-    await page.locator('.event-title').first().click();await reopened;
+    await page.locator('.event-title, .discover-view-event').first().click();await reopened;
     assert.equal(await count('view'),beforeViews+2);
   }
   // Failed direct sends show an error and keep the recipient unnotified.

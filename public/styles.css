@@ -1025,15 +1025,20 @@ input[type="checkbox"] {
 .drawer {
   position: fixed;
   inset: 16px auto 16px 16px;
-  width: 290px;
+  width: min(290px, calc(100vw - 32px));
   border: 1px solid var(--surface);
   border-radius: 20px;
   background: var(--hover);
   backdrop-filter: blur(28px);
-  z-index: 40;
+  z-index: 201;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 25px;
-  box-shadow: 0 0 0 100vmax color-mix(in oklch, var(--overlay) 30%, transparent);
+  box-shadow: var(--shadow);
 }
+
+.navigation-backdrop { position: fixed; inset: 0; z-index: 200; background: #0b102066; touch-action: none; }
+.navigation-backdrop[hidden] { display: none; }
 
 .drawer[hidden] {
   display: none;
@@ -2233,6 +2238,13 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 .friends-grid .friend-controls button { min-height: 44px; }
 .friend-detail-body { overflow-wrap: anywhere; }
 @media (max-width: 720px) {
+  .friends-grid { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 12px; }
+  .friends-grid .friend { display: grid; grid-template-columns: 42px minmax(0, 1fr); aspect-ratio: auto; align-items: start; text-align: left; padding: 14px; gap: 8px 12px; }
+  .friends-grid .friend > .avatar, .friends-grid .friend > .friend-photo { grid-column: 1; grid-row: 1 / span 2; }
+  .friends-grid .friend .info { grid-column: 2; flex: initial; width: auto; }
+  .friends-grid .friend-profile-name { text-align: left; }
+  .friends-grid .friend-controls { grid-column: 2; width: auto; margin-top: 0; padding-top: 0; border-top: 0; justify-content: flex-start; }
+  .friends-grid .friend .info > p { margin: 4px 0; }
   .friends-tabs { width: 100%; }
   .friends-tabs button { flex: 1; min-width: 0; min-height: 44px; }
   .friends-search input { font-size: 16px; min-height: 44px; }
@@ -2472,7 +2484,7 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
   display: grid;
   place-items: center;
   min-width: 0;
-  min-height: 260px;
+  min-height: 200px;
   color: var(--discover-navy);
   background: var(--discover-background);
 }
@@ -2480,7 +2492,7 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 .discover-feature-art img {
   display: block;
   width: 100%;
-  height: clamp(260px, 34vw, 390px);
+  height: clamp(200px, 24vw, 280px);
   object-fit: contain;
 }
 
@@ -2492,7 +2504,7 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 .discover-feature-copy {
   align-self: center;
   min-width: 0;
-  padding: clamp(20px, 4vw, 48px);
+  padding: clamp(18px, 2.5vw, 28px);
   overflow-wrap: anywhere;
 }
 
@@ -2536,6 +2548,20 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
   justify-content: flex-end;
 }
 
+/* Sparse content should size naturally, rather than reserving poster-sized gaps. */
+.discover-feature--no-image { grid-template-columns: 96px minmax(0, 1fr); }
+.discover-feature--no-image .discover-feature-art { min-height: 0; }
+.discover-feature--no-image .discover-feature-art svg { width: 44px; height: 44px; }
+.discover-recommendations .grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: start; }
+.discover-recommendations .event-card { display: grid; grid-template-columns: 96px minmax(0, 1fr); }
+.discover-recommendations .event-card > .poster { min-height: 130px; padding: 12px; justify-content: center; }
+.discover-recommendations .poster strong, .discover-recommendations .poster small { display: none; }
+.discover-recommendations .poster .shape svg { width: 64px; height: 64px; }
+.discover-recommendations .poster .shape { position: static; opacity: 1; align-self: center; }
+.discover-recommendations .card-body { padding: 12px; }
+.discover-recommendations .card-body h3 { margin: 4px 0 8px; }
+.discover-recommendations .event-card .metadata { margin-bottom: 0; }
+
 @media (max-width: 760px) {
   .discover-feature {
     grid-template-columns: minmax(0, 1fr);
@@ -2546,8 +2572,9 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
   }
 
   .discover-feature-art img {
-    height: clamp(180px, 52vw, 290px);
+    height: clamp(160px, 42vw, 220px);
   }
+  .discover-feature--no-image { grid-template-columns: 72px minmax(0, 1fr); }
 }
 
 @media (max-width: 500px) {
