@@ -106,7 +106,7 @@ try{
   .locator('#signupStep2 select[name="visibility"]')
   .selectOption('private');
   await page.getByRole('checkbox',{name:/Arts/}).check();
-  await page.getByRole('button',{name:'Create my account',exact:true}).click();
+  await page.getByRole('button',{name:'Create account',exact:true}).click();
   await page.getByRole('heading',{name:'Check your email'}).waitFor();
   const signup=calls.find(c=>c[0]==='/api/auth/signup')[1];
   assert.deepEqual(signup.profile,{firstName:'Alex',lastName:'Smith',username:'alex_test',isPrivate:true,categoryIds:['1']});

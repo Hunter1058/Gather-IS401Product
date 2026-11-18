@@ -30,7 +30,7 @@ window.GatherPlans = {
         if (demo) persistDemo();
         notify(kind === "bookmark"
           ? result[field] ? "Event bookmarked" : "Bookmark removed"
-          : result[field] ? "You're going!" : "RSVP canceled");
+          : result[field] ? "RSVP confirmed" : "RSVP canceled");
       } catch (error) {
         notify(error.message || "Could not save this change. Please try again.");
       } finally {

@@ -87,6 +87,11 @@ test('HTTP auth, owner mapping, validation, CSRF and individual writes', { skip:
     assert.deepEqual(listed[2].categories, []);
     assert.match(db.calls.find(c => c.table === 'Events').projection,
       /categoryLinks:Event_Category_Linking_Table\(IsPrimary, category:EventCategory\(EventCatagory, EventStockImage\)\)/);
+    db.rows.Events.push({EventID:'9223372036854775807',categoryLinks:[]});
+    const direct = await call('/events?eventId=9223372036854775807');
+    assert.equal(direct.status,200);
+    assert.deepEqual((await direct.json()).events.map(event=>event.id),['9223372036854775807']);
+    assert.equal((await call('/events?eventId=9223372036854775808')).status,400);
     db.errors.set('Events', { message: 'category listing denied' });
     assert.equal((await call('/events')).status, 500);
     db.errors.delete('Events');

@@ -15,7 +15,7 @@ window.GatherAttendance = (() => {
     const more = count - BigInt(friends.length);
     return `<div class="event-friend-attendance" data-friend-attendance="${escape(event.id)}">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      <div><span class="event-friend-count">${escape(count.toLocaleString())} ${count === 1n ? 'friend' : 'friends'} ${past ? 'RSVP’d' : 'going'}</span>
+      <div><span class="event-friend-count">${escape(count.toLocaleString())} ${count === 1n ? 'friend' : 'friends'} RSVP’d</span>
       <span class="event-friend-names">${escape(names)}${more > 0n ? ` · +${escape(more.toLocaleString())} more` : ''}</span></div>
     </div>`;
   }

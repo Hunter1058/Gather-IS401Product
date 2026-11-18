@@ -122,6 +122,26 @@ function requireAccount() {
 function toggleMenu() { const open=$("drawer").hidden; $("drawer").hidden=!open; $("menuButton").setAttribute("aria-expanded",String(open)); }
 
 // Filtering and search: the filters object describes the current query.
+function campusType(value) {
+  const campus = String(value || "").trim().toLowerCase();
+
+  if (["on-campus", "on campus", "oncampus"].includes(campus)) {
+    return "on-campus";
+  }
+
+  if (["off-campus", "off campus", "offcampus"].includes(campus)) {
+    return "off-campus";
+  }
+
+  return campus;
+}
+
+function eventBuilding(event) {
+  return String(event.location || "")
+    .split(",")[0]
+    .replace(/\s+(?:(?:room|rm\.?|suite)\s*)?\d+[a-z]?\s*$/i, "")
+    .trim();
+}
 function setMode(next) { mode=next; selectedDay=""; renderToolbar(); renderResults(); }
 function setFilter(keyName, value) {
   filters[keyName] = value;
@@ -135,6 +155,8 @@ function toggleCategory(category, checked) {
   filters.category = checked
     ? [...new Set([...filters.category, category])]
     : filters.category.filter(value => value !== category);
+
+  renderToolbar();
   renderResults();
 }
 function clearFilters() { Object.keys(filters).forEach((k)=>filters[k]=Array.isArray(filters[k])?[]:typeof filters[k]==="boolean"?false:""); filtersOpen=false; renderToolbar(); renderResults(); }
@@ -164,7 +186,7 @@ function filteredEvents() {
     : !past;
 
 
-    return allowed && smartEventMatch(event, filters.q) && (!filters.category.length||filters.category.some(category=>eventCategories(event).includes(category))) && (!filters.location||event.location===filters.location) && (!filters.from||event.date>=filters.from) && (!filters.to||event.date<=filters.to) && (!filters.campus||event.campusLocation===filters.campus);
+        return allowed && smartEventMatch(event, filters.q) && (!filters.category.length || filters.category.some(category => eventCategories(event).includes(category))) && (!filters.location || eventBuilding(event) === filters.location) && (!filters.from || event.date >= filters.from) && (!filters.to || event.date <= filters.to) && (!filters.campus || campusType(event.campusLocation) === filters.campus);
   }).sort(personalizedEventSort);
 }
 function options(values, current) { return `<option value="">All</option>`+values.map((value)=>`<option ${value===current?"selected":""}>${esc(value)}</option>`).join(""); }
@@ -213,9 +235,9 @@ function renderToolbar() {
     ? availableCategories
     : [...new Set(events.flatMap(eventCategories))].sort();
   const locationValues = [...new Set(events
-    .filter(event => !filters.campus || event.campusLocation === filters.campus)
-    .map(event => event.location)
-    .filter(Boolean))].sort();
+  .filter(event => !filters.campus || campusType(event.campusLocation) === filters.campus)
+  .map(eventBuilding)
+  .filter(Boolean))].sort();
   const categoryEmojis = {
     "Sports": "🏀",
     "Arts": "🎨",
@@ -236,7 +258,7 @@ function renderToolbar() {
   const categoryCheckboxes = `<div class="category-filter">
     <label>Category / type</label>
     <details class="category-dropdown">
-      <summary>${filters.category.length ? filters.category.length + " categories selected" : "All categories"}</summary>
+     <summary id="categoryFilterSummary">${filters.category.length ? filters.category.length + (filters.category.length === 1 ? " category selected" : " categories selected") : "All categories"}</summary>
       <div class="category-options">${
         categoryValues.map(category => `<label><input type="checkbox" value="${esc(category)}" ${
           filters.category.includes(category) ? "checked" : ""
@@ -244,11 +266,12 @@ function renderToolbar() {
       }</div>
     </details>
   </div>`;
-  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}"oninput="filters.q=this.value;renderResults();updateSearchSuggestions()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends going"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
+  $("toolbar").innerHTML=`<div class="row"><input class="search" aria-label="Search events" placeholder="Search events, clubs, or places…" value="${esc(filters.q)}"oninput="filters.q=this.value;renderResults();updateSearchSuggestions()"><button type="button" id="eventFiltersButton" aria-controls="eventFilters" onclick="filtersOpen=!filtersOpen;renderToolbar();document.getElementById('eventFiltersButton').focus()" aria-expanded="${filtersOpen}">${icon("sliders-horizontal")} Filters</button><button onclick="toggleView()">${view=== "calendar"?icon("list")+" List view":icon("calendar-days")+" Calendar view"}</button></div><div class="chips">${[["upcoming","All upcoming"],["rsvp","RSVP’d"],["saved","Bookmarked"],["friendsGoing","Friends’ RSVPs"],["past","Past saved events"]].map(([value,label])=>`<button class="${mode===value?"active":""}" aria-pressed="${mode===value}" onclick="setMode('${value}')">${label}</button>`).join("")}</div><div id="eventFilters" class="filters" ${filtersOpen?"":"hidden"}>${categoryCheckboxes}${filterSelect("Campus location","campus",["on-campus","off-campus"])}${filterSelect("Location","location",locationValues)}<label>From date<input type="date" value="${filters.from}" onchange="setFilter('from',this.value)"></label><label>Through date<input type="date" value="${filters.to}" onchange="setFilter('to',this.value)"></label></div>`;
   const toolbar = $("toolbar");
   toolbar.className = `toolbar event-toolbar${toolbarCollapsed ? " is-collapsed" : ""}`;
   toolbar.innerHTML = `<div id="eventSearchControls" ${toolbarCollapsed ? "hidden" : ""}>${toolbar.innerHTML}</div><div class="toolbar-collapse-row"><button type="button" class="toolbar-reset" onclick="clearFilters()" aria-label="Reset search and filters">${icon("rotate-ccw")} Reset filters</button><button type="button" id="toolbarCollapseButton" class="toolbar-collapse" aria-controls="eventSearchControls" aria-expanded="${!toolbarCollapsed}" onclick="toggleToolbar()">${icon(toolbarCollapsed ? "chevron-down" : "chevron-up")}<span>${toolbarCollapsed ? "Show search & filters" : "Minimize"}</span></button></div>`;
   $("toolbarReopenButton").hidden = !toolbarCollapsed;
+  $("toolbarReopenButton").setAttribute("aria-expanded", String(toolbarCollapsed));
   positionToolbarReopen();
   icons();
 }
@@ -329,7 +352,7 @@ function planButton(kind, event, compact = false) {
   const selected = data[saved ? "saved" : "rsvp"].includes(event.id);
   const pending = plans.busy(kind, event.id);
   const notReady = backendMode === "supabase" && !stateReady;
-  const unavailable = !saved && ended(event) && !selected;
+  const unavailable = ended(event) && !selected;
   const label = saved
     ? `${selected ? "Remove bookmark for" : "Bookmark"} ${event.name}`
     : `${selected ? "Cancel RSVP for" : "RSVP to"} ${event.name}`;
@@ -469,7 +492,7 @@ $("modal").addEventListener("close", () => {
   // A native close event may be queued when the dialog has already reopened.
   if (!$("modal").open) detailId = null;
 });
-function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; const newView = !$("modal").open || detailId !== id; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}<div><span class="muted">Admission</span><b>${eventAdmission(event)}</b>${eventFood(event)}</div><div><span class="muted">Hosted by</span><b>${esc(event.club||"Not Specified")}</b>Major relevance: ${esc(event.major||"Not Specified")}</div></div><section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description || "Not Specified")}</p></section>${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); if (newView) void logEventView(id); }
+function openEvent(id) { const event=events.find((item)=>item.id===id); if(!event)return; const newView = !$("modal").open || detailId !== id; detailId = id; showModal(`<button class="close" aria-label="Close event details" onclick="closeModal()">✕</button><div class="dialog-body event-detail-body"><header class="event-detail-heading"><h2 id="eventDetailTitle">${esc(event.name)}</h2><div class="event-tags">${categoryTags(event)}${ended(event)?'<span class="tag">Past event</span>':""}</div></header><div class="detail-grid"><div><span class="muted">When</span><b>${pretty(event.date,true)}</b>${time(event.start)}${event.end?"–"+time(event.end):""}</div>${eventWhereTile(event)}</div>${event.description ? `<section class="event-description" aria-labelledby="eventDescriptionTitle"><h3 id="eventDescriptionTitle">About this event</h3><p>${esc(event.description)}</p></section>` : ""}${window.GatherAttendance?.render(event, data, stateReady && backendMode === "supabase", ended(event)) || ""}<div class="row event-detail-actions">${planButton("bookmark", event)}${planButton("rsvp", event)}${shareButton(event)}</div></div>`); if (newView) void logEventView(id); }
 
 // Boot sequence: discover server mode, load data, load account state, and render.
 
@@ -600,10 +623,27 @@ updateActiveNav(); // Highlight the correct navigation button
 renderToolbar();
 renderResults();
   const sharedId = new URL(location.href).searchParams.get("event");
-  if (sharedId) {
-    if (events.some(event => event.id === sharedId)) openEvent(sharedId);
-    else toast("This event is no longer available.");
+
+if (sharedId) {
+  if (!events.some(event => event.id === sharedId)) {
+    try {
+      const result = await api(`/events?eventId=${encodeURIComponent(sharedId)}`);
+      const sharedEvent = result.events?.find(event => String(event.id) === sharedId);
+
+      if (sharedEvent) {
+        events.push(sharedEvent);
+      }
+    } catch (error) {
+      console.error("Unable to load shared event:", error);
+    }
   }
+
+  if (events.some(event => event.id === sharedId)) {
+    openEvent(sharedId);
+  } else {
+    toast("This event is no longer available.");
+  }
+}
 }
 
 $("modal").addEventListener("click",(event)=>{ if(event.target===$("modal")) closeModal(); });

@@ -25,6 +25,7 @@ function go(page) {
   location.assign(({ home: "/", saved: "/#saved", login: "/login", signup: "/signup" })[page] || "/");
 }
 function toggleMenu() {
+  if (window.GatherMobileNav) { window.GatherMobileNav.toggle(); return; }
   const open = $("drawer").hidden;
   $("drawer").hidden = !open;
   $("menuButton").setAttribute("aria-expanded", String(open));
@@ -240,36 +241,38 @@ async function loadSettings() {
     let profile = await api("/settings", { headers });
     showSummary();
 
-    function showSummary(message = "") {
+    function showSummary(message = "", editing = false) {
       const name = [profile.firstName, profile.lastName].filter(Boolean).join(" ") || data.user.name || "Your profile";
       const photo = profile.photoUrl?.trim();
       const initials = name.trim().split(/\s+/).slice(0, 2).map(part => Array.from(part)[0]).join("").toUpperCase();
-      const interests = profile.categories.filter(category => profile.categoryIds.includes(category.id));
+      const interests = profile.categories.filter(category => profile.categoryIds.some(id => String(id) === String(category.id)));
       renderAccountHeader(name, profile.photoUrl);
       app.innerHTML = `<section class="profile-settings" aria-labelledby="profileSettingsTitle">
         <h1 id="profileSettingsTitle">Profile settings</h1>
         <div class="auth settings-panel">
+          ${editing ? '<form id="settingsForm"></form>' : ""}
           <section class="settings-section" aria-labelledby="settingsProfileTitle">
             <h2 id="settingsProfileTitle">Profile</h2>
             <div class="settings-profile-row">
-              <div class="avatar settings-photo" aria-hidden="true">
+              <div class="settings-photo-wrap"><div class="avatar settings-photo" aria-hidden="true">
                 <span>${esc(initials)}</span>
                 ${photo && /^(https?:\/\/|data:image\/jpeg;base64,)/i.test(photo) ? `<img src="${esc(photo)}" alt="">` : ""}
               </div>
+              ${editing ? `<button class="settings-photo-edit" type="button" aria-label="Change profile photo" title="Change profile photo"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></svg></button><input form="settingsForm" id="settingsPhotoInput" name="photo" type="file" accept="image/jpeg,image/png,image/webp" hidden>` : ""}</div>
               <div class="settings-identity">
-                <strong>${esc(name)}</strong>
-                <p>${profile.username ? "@" + esc(profile.username.replace(/^@/, "")) : "Username not set"}</p>
+                ${editing ? `<div class="settings-name-fields"><label>First name<input form="settingsForm" name="firstName" autocomplete="given-name" maxlength="60" required value="${esc(profile.firstName || "")}"></label><label>Last name<input form="settingsForm" name="lastName" autocomplete="family-name" maxlength="60" value="${esc(profile.lastName || "")}"></label></div><label>Username<input form="settingsForm" name="username" autocomplete="username" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" aria-describedby="usernameHint" value="${esc(profile.username || "")}"></label><p id="usernameHint" class="muted">Use 3–30 letters, numbers, or underscores.</p>` : `<strong>${esc(name)}</strong>
+                <p>${profile.username ? "@" + esc(profile.username.replace(/^@/, "")) : "Username not set"}</p>`}
                 <p class="muted">${esc(data.user.email || "")}</p>
               </div>
-              <button id="editSettings" class="primary" type="button">Edit profile</button>
+              ${editing ? `<div class="settings-edit-actions"><button form="settingsForm" class="primary" type="submit">Save changes</button><button id="cancelSettings" type="button">Cancel</button></div>` : '<button id="editSettings" class="primary" type="button">Edit profile</button>'}
             </div>
-            <p id="settingsSaved" role="status" tabindex="-1">${esc(message)}</p>
+            ${editing ? '<p class="muted settings-photo-hint">Use the pencil to choose a JPG, PNG, or WebP photo up to 5 MB. Photos are cropped to a square.</p><p id="settingsStatus" role="status"></p>' : ""}
           </section>
           <section class="settings-section" aria-labelledby="settingsPrivacyTitle">
             <h2 id="settingsPrivacyTitle">Privacy</h2>
             <div class="settings-visibility">
               <strong>Profile visibility</strong>
-              <span class="settings-chip">${profile.isPrivate ? "Private" : "Public"}</span>
+              ${editing ? `<select form="settingsForm" name="visibility" aria-label="Profile visibility"><option value="private" ${profile.isPrivate ? "selected" : ""}>Private</option><option value="public" ${profile.isPrivate ? "" : "selected"}>Public</option></select>` : `<span class="settings-chip">${profile.isPrivate ? "Private" : "Public"}</span>`}
             </div>
             <p class="muted">${profile.isPrivate
               ? "People can find you by username. Your name and photo are hidden in search."
@@ -278,7 +281,7 @@ async function loadSettings() {
           <section class="settings-section" aria-labelledby="settingsInterestsTitle">
             <h2 id="settingsInterestsTitle">Event interests</h2>
             <p class="muted">These shape your recommendations on Discover.</p>
-            ${interests.length ? `<ul class="settings-chips">${interests.map(category =>
+            ${editing ? `<div class="settings-interest-options">${profile.categories.map(category => `<label class="settings-interest-option"><input form="settingsForm" type="checkbox" name="categoryId" value="${esc(category.id)}" ${profile.categoryIds.some(id => String(id) === String(category.id)) ? "checked" : ""}><span>${esc(category.EventCatagory || "Unnamed category")}</span></label>`).join("") || '<p class="muted">No categories available.</p>'}</div>` : interests.length ? `<ul class="settings-chips">${interests.map(category =>
               `<li class="settings-chip">${esc(category.EventCatagory || "Unnamed category")}</li>`
             ).join("")}</ul>` : '<p class="muted">No interests selected.</p>'}
           </section>
@@ -303,7 +306,7 @@ async function loadSettings() {
       const photoImage = app.querySelector(".settings-photo img");
       photoImage?.addEventListener("error", () => photoImage.remove());
       if (photoImage?.complete && !photoImage.naturalWidth) photoImage.remove();
-      $("editSettings").addEventListener("click", () => {
+      $("editSettings")?.addEventListener("click", () => {
         showForm();
         $("settingsForm").elements.firstName.focus();
       });
@@ -329,37 +332,47 @@ async function loadSettings() {
           submit.disabled = false;
         }
       });
-      if (message) $("settingsSaved").focus();
+      if (message) {
+        const notice = document.createElement("div");
+        notice.className = "settings-save-notice";
+        notice.setAttribute("role", "status");
+        document.body.append(notice);
+        notice.textContent = message;
+        setTimeout(() => notice.remove(), 4000);
+        $("editSettings").focus();
+      }
     }
 
     function showForm() {
-      const selected = new Set(profile.categoryIds);
-      app.innerHTML = `<form class="auth settings-panel" id="settingsForm">
-        <h1>Profile settings</h1>
-        <p class="muted">${esc(data.user.email || "")}</p>
-        <label>First name<input name="firstName" autocomplete="given-name" maxlength="60" required value="${esc(profile.firstName)}"></label>
-        <label>Last name<input name="lastName" autocomplete="family-name" maxlength="60" value="${esc(profile.lastName)}"></label>
-        <label>Username<input name="username" autocomplete="username" maxlength="31" aria-describedby="usernameHint" value="${esc(profile.username || "")}"></label>
-        <p class="muted" id="usernameHint">Use 3–30 letters, numbers, or underscores so people can find you in Friends.</p>
-        <label>Profile photo<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="photoHint"></label>
-        <p class="muted" id="photoHint">JPG, PNG, or WebP, up to 5 MB. Leave blank to keep your current photo.</p>
-        <label>Profile visibility
-          <select name="visibility" aria-describedby="visibilityHint">
-            <option value="private" ${profile.isPrivate ? "selected" : ""}>Private</option>
-            <option value="public" ${profile.isPrivate ? "" : "selected"}>Public</option>
-          </select>
-        </label>
-        <p id="visibilityHint" class="muted">People can find you by username either way. Only Public shows your name and photo to other signed-in users.</p>
-        <fieldset><legend>Event interests</legend>
-          <p class="muted">Choose any categories you’re interested in.</p>
-          <div class="settings-interests">${profile.categories.map(category =>
-          `<label><input type="checkbox" name="categoryId" value="${esc(category.id)}" ${selected.has(category.id) ? "checked" : ""}> ${categoryLabel(category)}</label>`
-          ).join("") || "<p>No categories available.</p>"}</div>
-        </fieldset>
-        <p id="settingsStatus" role="status"></p>
-        <button class="primary" type="submit">Save changes</button>
-        <button id="cancelSettings" type="button">Cancel</button>
-      </form>`;
+      showSummary("", true);
+      let previewPhoto;
+      let photoPending = false;
+      const photoInput = $("settingsPhotoInput");
+      app.querySelector(".settings-photo-edit").addEventListener("click", () => photoInput.click());
+      photoInput.addEventListener("change", async () => {
+        const file = photoInput.files[0];
+        if (!file) return;
+        photoPending = true;
+        const save = app.querySelector('[form="settingsForm"][type="submit"]');
+        save.disabled = true;
+        $("settingsStatus").textContent = "Preparing photo…";
+        try {
+          const prepared = await prepareProfilePhoto(file);
+          if (!photoInput.isConnected) return;
+          previewPhoto = prepared;
+          const avatar = app.querySelector(".settings-photo");
+          let image = avatar.querySelector("img");
+          if (!image) { image = document.createElement("img"); image.alt = ""; avatar.append(image); }
+          image.src = prepared;
+          $("settingsStatus").textContent = "Photo ready. Save changes to apply it.";
+        } catch (error) {
+          if (photoInput.isConnected) $("settingsStatus").textContent = error.message;
+          photoInput.value = "";
+        } finally {
+          photoPending = false;
+          save.disabled = false;
+        }
+      });
       $("cancelSettings").addEventListener("click", () => {
         showSummary();
         $("editSettings").focus();
@@ -368,31 +381,37 @@ async function loadSettings() {
         event.preventDefault();
         const form = event.currentTarget;
         const fields = new FormData(form);
-        const submit = form.querySelector('[type="submit"]');
+        const submit = app.querySelector('[form="settingsForm"][type="submit"]');
+        if (submit.disabled || photoPending) return;
         const status = $("settingsStatus");
         submit.disabled = true;
         $("cancelSettings").disabled = true;
+        const controls = Array.from(form.elements).filter(control => control !== submit && control !== $("cancelSettings"));
+        controls.forEach(control => control.disabled = true);
+        app.querySelector(".settings-photo-edit").disabled = true;
         status.textContent = "Saving…";
         try {
           const file = fields.get("photo");
-          const photoUrl = file?.size ? await prepareProfilePhoto(file) : undefined;
+          const photoUrl = previewPhoto ?? (file?.size ? await prepareProfilePhoto(file) : undefined);
           const saved = await api("/settings", {
             method: "PUT",
             headers,
             body: JSON.stringify({
               firstName: fields.get("firstName"),
               lastName: fields.get("lastName"),
-              categoryIds: fields.getAll("categoryId"),
+              categoryIds: profile.categories.filter(category => fields.getAll("categoryId").includes(String(category.id))).map(category => category.id),
               photoUrl,
               username: fields.get("username"),
               isPrivate: fields.get("visibility") === "private",
             }),
           });
-          profile = { ...profile, ...saved, photoUrl: photoUrl ?? profile.photoUrl, categoryIds: fields.getAll("categoryId") };
+          profile = { ...profile, ...saved, photoUrl: photoUrl ?? profile.photoUrl, categoryIds: profile.categories.filter(category => fields.getAll("categoryId").includes(String(category.id))).map(category => category.id) };
           showSummary("Profile updated.");
         } catch (error) {
           status.textContent = error.message;
         } finally {
+          controls.forEach(control => control.disabled = false);
+          app.querySelector(".settings-photo-edit")?.removeAttribute("disabled");
           submit.disabled = false;
           if ($("cancelSettings")) $("cancelSettings").disabled = false;
         }
@@ -521,49 +540,62 @@ async function loadSignup() {
 
     // STEP 2: Profile personalization
     function showStep2() {
-      const selected = new Set(signupData.categoryIds);
-
-      app.innerHTML = `
-        <form class="auth" id="signupStep2">
-          <span class="eyebrow">Step 2 of 2</span>
-          <h1>Make Gather yours</h1>
-          <p class="muted">Choose your interests to see relevant events first.</p>
-
-          <label>Profile picture (optional)
-            <input name="photo" type="file"
-              accept="image/jpeg,image/png,image/webp">
-          </label>
-          <p class="muted">JPG, PNG, or WebP. Maximum 5 MB.</p>
-
-          <label>Profile visibility
-            <select name="visibility">
-              <option value="private" ${signupData.visibility === "private" ? "selected" : ""}>Private</option>
-              <option value="public" ${signupData.visibility === "public" ? "selected" : ""}>Public</option>
-            </select>
-          </label>
-
-          <fieldset>
-            <legend>What events interest you?</legend>
-            <p class="muted">Select as many categories as you like.</p>
-
-            <div class="settings-interests">
-              ${categories.map(category => `
-                <label>
-                  <input type="checkbox" name="categoryId"
-                    value="${esc(category.id)}"
-                    ${selected.has(category.id) ? "checked" : ""}>
-                    ${categoryLabel(category)}
-                </label>
-              `).join("")}
+      const selected = new Set(signupData.categoryIds.map(String));
+      const initials = [signupData.firstName, signupData.lastName].filter(Boolean).map(part => Array.from(part)[0]).join("").toUpperCase();
+      let preparingPhoto = false;
+      app.innerHTML = `<section class="profile-settings signup-personalise" aria-labelledby="personaliseTitle">
+        <div class="signup-personalise-intro"><p>Step 2 of 2</p><h1 id="personaliseTitle">Make it yours.</h1>
+        <p class="muted">Add a photo and choose what you’d like to discover.</p></div>
+        <form class="auth settings-panel" id="signupStep2">
+          <section class="settings-section" aria-labelledby="signupPhotoTitle">
+            <h2 id="signupPhotoTitle">Profile photo</h2>
+            <div class="settings-profile-row">
+              <div class="settings-photo-wrap"><div class="avatar settings-photo"><span>${esc(initials)}</span>${signupData.photoPreview ? `<img src="${esc(signupData.photoPreview)}" alt="Profile photo preview">` : ""}</div>
+                <button class="settings-photo-edit" id="signupPhotoEdit" type="button" aria-label="Upload profile photo"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></svg></button>
+                <input id="signupPhotoInput" name="photo" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="signupPhotoHint" hidden>
+              </div>
+              <div><strong>Upload a profile photo</strong><p id="signupPhotoHint" class="muted">Optional · JPG, PNG, or WebP, up to 5 MB. Photos are cropped to a square.</p><p id="signupPhotoStatus" role="status"></p></div>
             </div>
-          </fieldset>
-
-          <p id="signupError" class="error" role="alert"></p>
-
-          <button class="primary" type="submit">Create my account</button>
-          <button id="signupBack" type="button">Back</button>
+          </section>
+          <section class="settings-section" aria-labelledby="signupPrivacyTitle">
+            <h2 id="signupPrivacyTitle">Privacy</h2>
+            <div class="settings-visibility"><label for="signupVisibility">Profile visibility</label>
+              <select id="signupVisibility" name="visibility" aria-describedby="signupVisibilityHint"><option value="private" ${signupData.visibility === "private" ? "selected" : ""}>Private</option><option value="public" ${signupData.visibility === "public" ? "selected" : ""}>Public</option></select>
+            </div>
+            <p class="muted" id="signupVisibilityHint">People can find you by username. When private, your name and photo stay hidden in search.</p>
+          </section>
+          <section class="settings-section" aria-labelledby="signupInterestsTitle">
+            <h2 id="signupInterestsTitle">Event interests</h2><p class="muted">Choose interests to personalise your recommendations.</p>
+            <div class="settings-interest-options">${categories.map(category => `<label class="settings-interest-option"><input type="checkbox" name="categoryId" value="${esc(category.id)}" ${selected.has(String(category.id)) ? "checked" : ""}><span>${esc(category.EventCatagory || "Unnamed category")}</span></label>`).join("") || '<p class="muted">No categories available.</p>'}</div>
+          </section>
+          <section class="settings-section signup-personalise-footer">
+            <p id="signupError" class="error" role="alert"></p>
+            <div class="signup-personalise-actions"><button id="signupBack" type="button">Back</button><p class="muted">You can change these choices later in Settings.</p><button class="primary" type="submit">Create account</button></div>
+          </section>
         </form>
-      `;
+      </section>`;
+      $("signupPhotoEdit").addEventListener("click", () => $("signupPhotoInput").click());
+      $("signupPhotoInput").addEventListener("change", async event => {
+        const file = event.currentTarget.files[0];
+        if (!file) return;
+        preparingPhoto = true;
+        const submit = $("signupStep2").querySelector('[type="submit"]');
+        submit.disabled = true;
+        $("signupBack").disabled = true;
+        $("signupPhotoEdit").disabled = true;
+        $("signupPhotoStatus").textContent = "Preparing photo…";
+        try {
+          const preview = await prepareProfilePhoto(file);
+          signupData.photo = file;
+          signupData.photoPreview = preview;
+          const avatar = app.querySelector(".settings-photo");
+          let image = avatar.querySelector("img");
+          if (!image) { image = document.createElement("img"); image.alt = "Profile photo preview"; avatar.append(image); }
+          image.src = preview;
+          $("signupPhotoStatus").textContent = "Photo ready.";
+        } catch (error) { event.target.value = ""; $("signupPhotoStatus").textContent = error.message; }
+        finally { preparingPhoto = false; submit.disabled = false; $("signupBack").disabled = false; $("signupPhotoEdit").disabled = false; }
+      });
 
       $("signupBack").addEventListener("click", () => {
         const fields = new FormData($("signupStep2"));
@@ -583,7 +615,7 @@ async function loadSignup() {
         const button = form.querySelector('[type="submit"]');
         const status = $("signupError");
 
-        if (button.disabled) return;
+        if (button.disabled || preparingPhoto) return;
         button.disabled = true;
         $("signupBack").disabled = true;
         status.textContent = "Creating your account…";

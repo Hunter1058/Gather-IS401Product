@@ -1025,15 +1025,20 @@ input[type="checkbox"] {
 .drawer {
   position: fixed;
   inset: 16px auto 16px 16px;
-  width: 290px;
+  width: min(290px, calc(100vw - 32px));
   border: 1px solid var(--surface);
   border-radius: 20px;
   background: var(--hover);
   backdrop-filter: blur(28px);
-  z-index: 40;
+  z-index: 201;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 25px;
-  box-shadow: 0 0 0 100vmax color-mix(in oklch, var(--overlay) 30%, transparent);
+  box-shadow: var(--shadow);
 }
+
+.navigation-backdrop { position: fixed; inset: 0; z-index: 200; background: #0b102066; touch-action: none; }
+.navigation-backdrop[hidden] { display: none; }
 
 .drawer[hidden] {
   display: none;
@@ -2233,6 +2238,13 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 .friends-grid .friend-controls button { min-height: 44px; }
 .friend-detail-body { overflow-wrap: anywhere; }
 @media (max-width: 720px) {
+  .friends-grid { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 12px; }
+  .friends-grid .friend { display: grid; grid-template-columns: 42px minmax(0, 1fr); aspect-ratio: auto; align-items: start; text-align: left; padding: 14px; gap: 8px 12px; }
+  .friends-grid .friend > .avatar, .friends-grid .friend > .friend-photo { grid-column: 1; grid-row: 1 / span 2; }
+  .friends-grid .friend .info { grid-column: 2; flex: initial; width: auto; }
+  .friends-grid .friend-profile-name { text-align: left; }
+  .friends-grid .friend-controls { grid-column: 2; width: auto; margin-top: 0; padding-top: 0; border-top: 0; justify-content: flex-start; }
+  .friends-grid .friend .info > p { margin: 4px 0; }
   .friends-tabs { width: 100%; }
   .friends-tabs button { flex: 1; min-width: 0; min-height: 44px; }
   .friends-search input { font-size: 16px; min-height: 44px; }
@@ -2382,8 +2394,8 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 .calendar-month .calendar { border: 0; border-radius: 0; box-shadow: none; background: transparent; }
 .calendar-month .calhead { background: var(--detail); }
 .calendar-month .calhead div { font-weight: 600; padding: 12px 4px; }
-.calendar-month .calgrid { grid-auto-rows: 156px; }
-.calendar-month .day { height: 156px; min-height: 0; padding: 8px; overflow: hidden; }
+.calendar-month .calgrid { grid-auto-rows: minmax(156px, auto); }
+.calendar-month .day { height: auto; min-height: 156px; padding: 8px; overflow: visible; }
 .calendar-month .day:nth-child(7n) { border-right: 0; }
 .calendar-month .day.dim { background: var(--row-surface); }
 .calendar-month .day.selected-day { background: var(--primary-soft); box-shadow: inset 0 0 0 2px var(--primary); }
@@ -2399,8 +2411,8 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 @media (max-width: 600px) {
   .calendar-month-heading { padding: 18px 16px; }
   .calendar-month-heading h2 { font-size: 20px; }
-  .calendar-month .calgrid { grid-auto-rows: 82px; }
-  .calendar-month .day { height: 82px; min-height: 0; padding: 5px 2px; text-align: center; }
+  .calendar-month .calgrid { grid-auto-rows: minmax(82px, auto); }
+  .calendar-month .day { height: auto; min-height: 82px; padding: 5px 2px; text-align: center; overflow: visible; }
   .calendar-month .calhead div { font-size: 10px; }
   .calendar-previews, .calendar-more { display: none; }
   .calendar-mobile-count { display: block; margin: 6px auto 0; padding: 2px 8px; border: 0; border-radius: 999px; background: var(--primary-soft); color: var(--primary); font-size: 11px; }
@@ -2472,7 +2484,7 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
   display: grid;
   place-items: center;
   min-width: 0;
-  min-height: 260px;
+  min-height: 200px;
   color: var(--discover-navy);
   background: var(--discover-background);
 }
@@ -2480,7 +2492,7 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 .discover-feature-art img {
   display: block;
   width: 100%;
-  height: clamp(260px, 34vw, 390px);
+  height: clamp(200px, 24vw, 280px);
   object-fit: contain;
 }
 
@@ -2492,7 +2504,7 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 .discover-feature-copy {
   align-self: center;
   min-width: 0;
-  padding: clamp(20px, 4vw, 48px);
+  padding: clamp(18px, 2.5vw, 28px);
   overflow-wrap: anywhere;
 }
 
@@ -2536,6 +2548,20 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
   justify-content: flex-end;
 }
 
+/* Sparse content should size naturally, rather than reserving poster-sized gaps. */
+.discover-feature--no-image { grid-template-columns: 96px minmax(0, 1fr); }
+.discover-feature--no-image .discover-feature-art { min-height: 0; }
+.discover-feature--no-image .discover-feature-art svg { width: 44px; height: 44px; }
+.discover-recommendations .grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: start; }
+.discover-recommendations .event-card { display: grid; grid-template-columns: 96px minmax(0, 1fr); }
+.discover-recommendations .event-card > .poster { min-height: 130px; padding: 12px; justify-content: center; }
+.discover-recommendations .poster strong, .discover-recommendations .poster small { display: none; }
+.discover-recommendations .poster .shape svg { width: 64px; height: 64px; }
+.discover-recommendations .poster .shape { position: static; opacity: 1; align-self: center; }
+.discover-recommendations .card-body { padding: 12px; }
+.discover-recommendations .card-body h3 { margin: 4px 0 8px; }
+.discover-recommendations .event-card .metadata { margin-bottom: 0; }
+
 @media (max-width: 760px) {
   .discover-feature {
     grid-template-columns: minmax(0, 1fr);
@@ -2546,8 +2572,9 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
   }
 
   .discover-feature-art img {
-    height: clamp(180px, 52vw, 290px);
+    height: clamp(160px, 42vw, 220px);
   }
+  .discover-feature--no-image { grid-template-columns: 72px minmax(0, 1fr); }
 }
 
 @media (max-width: 500px) {
@@ -2690,7 +2717,67 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 }
 
 
-.discover-recommendations .event-bookmark[aria-pressed="true"] svg {
-  color: var(--discover-navy, #002e5d);
+.event-bookmark[aria-pressed="true"] svg {
   fill: currentColor;
 }
+
+/* Sharing uses a separate native dialog and the existing form/card controls. */
+#eventShareDialog { width: min(520px, calc(100vw - 32px)); }
+#eventShareDialog .event-share-body { display: grid; gap: 16px; padding: 28px; }
+#eventShareDialog .event-share-header { padding-right: 46px; min-width: 0; }
+#eventShareDialog h2, #eventShareDialog h3, #eventShareDialog p { margin: 0; }
+#eventShareDialog h2 { overflow-wrap: anywhere; }
+#eventShareDialog .event-share-header p { margin-top: 8px; }
+#eventShareDialog .event-share-options { flex-wrap: wrap; }
+#eventShareDialog .event-share-link { margin: 0; }
+#eventShareDialog input, #eventShareDialog select { width: 100%; min-width: 0; }
+#eventShareDialog button, .shared-event a { min-height: 44px; }
+#eventShareDialog .event-share-friends { display: grid; gap: 12px; border-top: 1px solid var(--border); padding-top: 18px; }
+#eventShareDialog .event-share-friends label { margin: 0; }
+#eventShareDialog .event-share-friends button { justify-self: start; }
+#eventShareDialog [role="status"]:empty { display: none; }
+#eventShareDialog .event-share-signin { border-top: 1px solid var(--border); padding-top: 18px; }
+@media (max-width: 480px) {
+  #eventShareDialog .event-share-body { padding: 22px 20px; }
+  #eventShareDialog .event-share-options > button { flex: 1 1 auto; }
+}
+.shared-event .primary { display: inline-flex; align-items: center; padding: 10px 16px; border-radius: 8px; text-decoration: none; }
+.friends-tabs { flex-wrap: wrap; }
+
+/* Inline settings editor: preserve the summary sections while editing. */
+#settingsForm { display: none; }
+.settings-photo-wrap { position: relative; flex-shrink: 0; }
+.settings-photo-edit { position:absolute; bottom:-4px; right:-4px; width:34px; height:34px; min-height:0; margin:0; padding:6px; border:2px solid white; border-radius:50%; display:grid; place-items:center; background:#002e5d; color:white; }
+.settings-photo-edit:hover { background:#164773; }
+.settings-photo-wrap input[hidden] { display:none; }
+.settings-name-fields { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.settings-identity label { display:block; margin:0 0 10px; font-size:.875rem; font-weight:600; }
+.settings-identity input { width:100%; min-width:0; margin-top:4px; }
+.settings-edit-actions { display:flex; flex-wrap:wrap; align-self:flex-start; gap:8px; }
+.settings-edit-actions button { width:auto; margin:0; min-height:44px; }
+.settings-edit-actions .primary { background:#002e5d; color:white; }
+.settings-visibility select { width:auto; min-width:130px; }
+.settings-photo-hint { margin-top:16px; font-size:.85rem; }
+#settingsStatus:empty { display:none; }
+.settings-interest-options { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+.settings-interest-option { position:relative; margin:0; cursor:pointer; }
+.settings-interest-option input { position:absolute; opacity:0; width:1px; height:1px; }
+.settings-interest-option span { display:block; padding:7px 14px; border:1px solid #b5c2ce; border-radius:999px; color:#002e5d; background:white; }
+.settings-interest-option input:checked + span { background:#002e5d; border-color:#002e5d; color:white; }
+.settings-interest-option input:focus-visible + span { outline:3px solid #649bd0; outline-offset:3px; }
+.settings-save-notice { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:100; padding:12px 20px; border-radius:12px; background:#002e5d; color:white; box-shadow:0 4px 20px #002e5d30; }
+@media(max-width:680px) { .settings-profile-row { flex-wrap:wrap; } .settings-edit-actions { flex-basis:100%; } .settings-identity { flex-basis:calc(100% - 110px); } }
+@media(max-width:400px) { .settings-name-fields { grid-template-columns:1fr; } }
+
+/* Account creation: share the Settings panel and controls. */
+.signup-personalise-intro { text-align:center; }
+.signup-personalise-intro h1 { margin:8px 0; }
+.signup-personalise .settings-panel { border-radius:20px; }
+.signup-personalise .settings-visibility label { margin:0; font-weight:600; }
+.signup-personalise-actions { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.signup-personalise-actions button { width:auto; margin:0; flex-shrink:0; min-height:44px; }
+.signup-personalise-actions .primary { background:#002e5d; color:white; }
+.signup-personalise-actions p { margin:0; text-align:center; font-size:.875rem; }
+.signup-personalise #signupError:empty, #signupPhotoStatus:empty { display:none; }
+.signup-personalise .settings-interest-option { margin:0; }
+@media(max-width:540px) { .signup-personalise-actions { flex-wrap:wrap; } .signup-personalise-actions p { order:3; flex-basis:100%; } .signup-personalise .settings-profile-row > div:last-child { flex:1; min-width:160px; } }

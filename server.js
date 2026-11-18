@@ -16,6 +16,7 @@ import { createClient } from "@supabase/supabase-js";
 import { authSessions } from "./lib/auth-session.js";
 import { isSameOrigin } from "./lib/request-origin.js";
 import { people, userId, friendBody, sendRequest, cancelRequest, removeFriend, respondRequest, connections } from "./lib/friends.js";
+import { shareEvent, receivedShares, eventId } from "./lib/event-sharing.js";
 import { logEventView } from "./lib/event-interactions.js";
 import { planInput, profileId, readPlans, writePlan } from "./lib/event-plans.js";
 
@@ -103,10 +104,12 @@ export const server = http.createServer(async (req, res) => {
 
       // Public event listing: reads rows directly from the Supabase Events table.
       if (route === "/events" && req.method === "GET") {
-        const { data, error } = await publicClient
+        const eventQuery = publicClient
           .from("Events")
           .select("EventID::text, EventName, EventLocation, EventDate, EventTime, EventDescription, EventImage, CampusLocation, categoryLinks:Event_Category_Linking_Table(IsPrimary, category:EventCategory(EventCatagory, EventStockImage))")
           .limit(500);
+        if (url.searchParams.has("eventId")) eventQuery.eq("EventID", eventId(url.searchParams.get("eventId")));
+        const { data, error } = await eventQuery;
         
         if (error) throw error;
 
@@ -419,6 +422,23 @@ return json(res, 200, {
         });
       }
 
+      const shareRoute = /^\/events\/([^/]+)\/share$/.exec(route);
+      if (shareRoute || route === "/shared-events") {
+        if (!isSameOrigin(req)) return json(res, 403, { error: "Request origin is not allowed." });
+        const method = shareRoute ? "POST" : "GET";
+        if (req.method !== method) {
+          res.setHeader("Allow", method);
+          return json(res, 405, { error: `Use ${method} for this operation.` });
+        }
+        const session = await sessionCookies.restore(req, res);
+        if (!session) return json(res, 401, { error: "Sign in to share with Gather." });
+        if (req.headers["x-gather-account"] !== session.user.id)
+          return json(res, 409, { error: "Your account changed. Reload before continuing.", code: "ACCOUNT_CHANGED" });
+        if (shareRoute)
+          return json(res, 200, { accountId: session.user.id, ...await shareEvent(session.client, shareRoute[1], await body(req)) });
+        return json(res, 200, { accountId: session.user.id, ...await receivedShares(session.client, url.searchParams) });
+      }
+
       // Friend actions use the verified per-request account client. The header
       // protects against acting from a tab showing a different signed-in user.
       if (route.startsWith("/friends/")) {
@@ -528,7 +548,7 @@ return json(res, 200, {
       return json(res, 404, { error: "Page not found." });
     }
   } catch (e) {
-    console.error("Request failed:", e.code || e.name || "Error");
+    console.error("Request failed:", e.code || e.name || "Error", ...(e.databaseCode ? ["Supabase code:", e.databaseCode] : []));
     return json(res, e.status || 500, { error: e.status ? e.message : "The request could not be completed.", ...(e.status && e.code ? { code: e.code } : {}) });
   }
 });
