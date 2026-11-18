@@ -272,6 +272,8 @@ try {
     navigator.share = async payload => { window.sharedEvent = payload; };
   });
   await page.locator('#modal .event-share').click();
+  await page.getByRole('button', {name:'Share with device',exact:true}).click();
+  await page.getByRole('button', {name:'Close share dialog',exact:true}).click();
   const shared = await page.evaluate(() => window.sharedEvent);
   assert.equal(shared.url, base + '/events?event=1');
   await page.locator('#modal [data-plan-kind="rsvp"]').click();

@@ -629,7 +629,8 @@ function friendsPage() {
   if (backendMode !== "supabase") return heading + '<p class="notice">Friend requests require a connected account.</p>';
   if (!data.user) return heading + '<div class="notice">Sign in to connect with people. <button onclick="go(\'login\')">Sign in</button></div>';
   const state = friendActions.view();
-  const tabs = `<div class="friends-tabs" role="tablist" aria-label="Friends">${[["friends", "My Friends"], ["search", "Find Friends"], ["requests", "Requests"]].map(([key, label]) => `<button type="button" role="tab" id="friends-tab-${key}" aria-controls="friends-panel" aria-selected="${friendsTab === key}" tabindex="${friendsTab === key ? "0" : "-1"}" ${friendActions.hasPending() || state.accountChanged ? "disabled" : ""} onclick="selectFriendsTab('${key}')" onkeydown="friendsTabKey(event, '${key}')">${label}</button>`).join("")}</div>`;
+  const tabs = `<div class="friends-tabs" role="tablist" aria-label="Friends">${[["friends", "My Friends"], ["search", "Find Friends"], ["requests", "Requests"], ["shared", "Shared with Me"]].map(([key, label]) => `<button type="button" role="tab" id="friends-tab-${key}" aria-controls="friends-panel" aria-selected="${friendsTab === key}" tabindex="${friendsTab === key ? "0" : "-1"}" ${friendActions.hasPending() || state.accountChanged ? "disabled" : ""} onclick="selectFriendsTab('${key}')" onkeydown="friendsTabKey(event, '${key}')">${label}</button>`).join("")}</div>`;
+  if (friendsTab === "shared") return heading + tabs + `<section id="friends-panel" role="tabpanel" aria-labelledby="friends-tab-shared" tabindex="0">${receivedEventSharesMarkup()}</section>`;
   const notice = state.error ? `<div class="notice" role="alert">${esc(state.error)} <button onclick="${state.accountChanged ? "location.reload()" : "refreshPeople()"}">${state.accountChanged ? "Reload page" : "Retry"}</button></div>` : "";
   const cards = people => `<div class="grid friends-grid">${people.map(person => friendCard(person, state)).join("")}</div>`;
   let content = "";
@@ -733,7 +734,7 @@ async function moreFriendConnections(kind) {
 }
 function friendAction(id, decision) { return friendActions.act(id, decision); }
 function refreshFriend(id) { return friendActions.refreshPerson(id); }
-function refreshPeople() { return friendActions.load(false, { section: friendsTab, search: friendsTab === "search" ? friendsSearch : "" }); }
+function refreshPeople() { if (friendsTab === "shared") return loadReceivedEventShares(); return friendActions.load(false, { section: friendsTab, search: friendsTab === "search" ? friendsSearch : "" }); }
 function loadMorePeople() { return friendActions.load(true); }
 function selectFriendsTab(tab) {
   if (friendActions.hasPending() || friendActions.view().accountChanged) return;
@@ -743,8 +744,8 @@ function selectFriendsTab(tab) {
   return result;
 }
 function friendsTabKey(event, tab) {
-  const keys = ["friends", "search", "requests"], index = keys.indexOf(tab);
-  const next = event.key === "ArrowRight" ? keys[(index + 1) % 3] : event.key === "ArrowLeft" ? keys[(index + 2) % 3] : event.key === "Home" ? keys[0] : event.key === "End" ? keys[2] : null;
+  const keys = ["friends", "search", "requests", "shared"], index = keys.indexOf(tab);
+  const next = event.key === "ArrowRight" ? keys[(index + 1) % keys.length] : event.key === "ArrowLeft" ? keys[(index + keys.length - 1) % keys.length] : event.key === "Home" ? keys[0] : event.key === "End" ? keys.at(-1) : null;
   if (next) { event.preventDefault(); selectFriendsTab(next); }
 }
 function searchFriends(event) {

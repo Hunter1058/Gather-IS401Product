@@ -28,6 +28,7 @@ async function pageFixture({ script = 'events', viewError = false, user = { id: 
       let payload;
       if (path === '/api/config') payload = { mode: 'supabase' };
       else if (path === '/api/events') payload = { events: [{ id: '1', name: 'Jazz <friends>', category: 'Arts', categories: ['Arts', 'Spiritual'], location: 'Music Building', date: '2099-11-05', start: null, end: null, price: 0, food: false }] };
+      else if (path === '/api/events?eventId=9007199254740993') payload = {events:[{id:'9007199254740993',name:'Outside first page',category:'Arts',date:'2099-11-05'}]};
       else if (path === '/api/settings') payload = { categoryIds: [], categories: [] };
       else if (path === '/api/auth/session') {
         if (sessionError) return { ok: false, async json() { return { error: 'Account service unavailable' }; } };
@@ -358,3 +359,12 @@ for (const script of ['events', 'app']) {
     assert.equal(page.diagnostics.length, 2);
   });
 }
+
+
+test('a shared event outside the initial listing loads by exact ID and logs one detail view',async()=>{
+  const page=await pageFixture({href:'http://fixture/events?event=9007199254740993'});
+  assert.equal(page.element('modal').open,true);
+  assert.match(page.element('modal').innerHTML,/Outside first page/);
+  assert.equal(page.views.length,1);
+  assert.equal(page.views[0].path,'/api/events/9007199254740993/view');
+});

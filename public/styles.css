@@ -2694,3 +2694,11 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
   color: var(--discover-navy, #002e5d);
   fill: currentColor;
 }
+
+/* Sharing uses a separate native dialog and the existing form/card controls. */
+#eventShareDialog { width: min(520px, calc(100vw - 32px)); }
+#eventShareDialog .event-share-options { flex-wrap: wrap; }
+#eventShareDialog input, #eventShareDialog select { width: 100%; min-width: 0; }
+#eventShareDialog button, .shared-event a { min-height: 44px; }
+.shared-event .primary { display: inline-flex; align-items: center; padding: 10px 16px; border-radius: 8px; text-decoration: none; }
+.friends-tabs { flex-wrap: wrap; }

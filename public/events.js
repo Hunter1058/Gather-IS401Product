@@ -579,6 +579,12 @@ renderToolbar();
 renderResults();
   const sharedId = new URL(location.href).searchParams.get("event");
   if (sharedId) {
+    if (!events.some(event => event.id === sharedId) && /^[1-9]\d{0,18}$/.test(sharedId)) {
+      try {
+        const listing = await api("/events?eventId=" + encodeURIComponent(sharedId));
+        events.push(...listing.events.filter(event => event.id === sharedId));
+      } catch { console.warn("Shared event could not be loaded."); }
+    }
     if (events.some(event => event.id === sharedId)) openEvent(sharedId);
     else toast("This event is no longer available.");
   }
