@@ -136,6 +136,7 @@ function ended(e) {
     : new Date(e.date + "T" + (e.end || "23:59:59")) < new Date();
 }
 function toggleMenu() {
+  if (window.GatherMobileNav) { window.GatherMobileNav.toggle(); return; }
   const open = $("drawer").hidden;
   $("drawer").hidden = !open;
   $("menuButton").setAttribute("aria-expanded", String(open));
@@ -156,6 +157,7 @@ function go(p) {
   page = p;
   mode = p === "saved" ? "saved" : "upcoming";
   selectedDay = "";
+  window.GatherMobileNav?.set(false, false);
   $("drawer").hidden = true;
   $("menuButton").setAttribute("aria-expanded", "false");
   if (location.protocol !== "file:")
@@ -908,7 +910,7 @@ function hero() {
   const artwork = imageUrl && /^https?:\/\//i.test(imageUrl)
     ? `<img src="${esc(imageUrl)}" alt="">`
     : icon(categoryIcon(event));
-  return `<section class="discover-feature" aria-label="Featured events">
+  return `<section class="discover-feature${artwork.startsWith("<img") ? "" : " discover-feature--no-image"}" aria-label="Featured events">
     <div class="discover-feature-art ${categoryClass(event)}" aria-hidden="true">${artwork}</div>
     <div class="discover-feature-copy">
       <small>Featured on campus</small>

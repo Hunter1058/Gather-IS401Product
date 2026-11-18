@@ -1,6 +1,7 @@
 // Real DOM/browser UX checks, using the real friend service and fake database.
 // Actual Supabase/RLS is tested separately by the SQL rehearsal/live checks.
 import assert from 'node:assert/strict';
+import {checkDrawer} from './helpers/mobile-layout.js';
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -108,7 +109,9 @@ try {
   assert(Math.abs(tile.width - tile.height) < 2, 'suggested friend tiles should be square');
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileTile = await card().boundingBox();
-  assert(Math.abs(mobileTile.width - mobileTile.height) < 2, 'mobile friend tiles should stay square');
+  await checkDrawer(page, action());
+  assert(mobileTile.height < mobileTile.width, 'mobile friends should be compact content-sized rows');
+  assert.equal(await card().evaluate(el => getComputedStyle(el).aspectRatio), 'auto');
   assert.equal(await page.getByRole('button', { name: 'Next people you may know', exact: true }).count(), 0);
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.setViewportSize({ width: 1280, height: 900 });
