@@ -148,3 +148,61 @@ See the [database schema](supabase/schema.sql) and [event plans migration](supab
 For password recovery, durable signup profiles and authentication verification, see [AUTH-RECOVERY-SETUP.md](docs/AUTH-RECOVERY-SETUP.md) and [AUTH-TEST-CHECKLIST.md](docs/AUTH-TEST-CHECKLIST.md).
 
 For friends’ RSVPs on event cards, see [EVENT-FRIEND-ATTENDANCE.md](docs/EVENT-FRIEND-ATTENDANCE.md).
+
+## Key Features
+
+Gather helps BYU students discover campus events and connect with friends.
+
+- **Centralized Event Discovery:** Browse events collected from five BYU sources in one location.
+- **AI-Powered Categorization:** Google Gemini automatically categorizes events based on their titles and descriptions.
+- **Personalized Recommendations:** Discover events based on interests saved in your user profile.
+- **Event Search and Filters:** Search events by keywords, categories, locations, and dates.
+- **Calendar View:** Explore upcoming events in a calendar layout.
+- **Bookmarks and RSVPs:** Save events and RSVP to activities you plan to attend.
+- **Social Features:** Connect with friends and see which events they're attending.
+- **User Profiles:** Manage your profile picture, account information, and event interests.
+- **Event Sharing:** Share event links with other students.
+- **Engagement Tracking:** Track RSVPs, event views, friendships, and shares through database activity logs and OKR calculations.
+
+
+## Objectives and Key Results (OKRs)
+
+Gather tracks four engagement metrics to evaluate how effectively students discover events and connect with others.
+
+| Key Result | Measurement |
+|---|---|
+| RSVPs per User | Average number of event RSVPs per registered user |
+| Event Views per User | Average number of recorded event views per registered user |
+| Friends per User | Average number of friendship connections per registered user |
+| Shares per User | Average number of recorded event shares per registered user |
+
+OKR results are stored in three Supabase tables:
+
+- `WeeklyOKRScores`
+- `MonthlyOKRScores`
+- `OverallOKRScores`
+
+PostgreSQL functions calculate summary metrics from the application's user, RSVP, friendship, and event-interaction data.
+
+The monthly calculation supports tracking engagement during the current calendar month. Calculations can be executed manually to refresh the reporting tables.
+
+## Testing
+
+Gather includes automated tests for application functionality.
+
+Run the project's test suite using:
+
+```bash
+npm test
+```
+
+Additional manual testing covers:
+
+- User signup, login, and session persistence
+- Event browsing, filtering, and calendar navigation
+- Bookmarking and RSVPing to events
+- Personalized event recommendations
+- Friends and social interactions
+- Profile settings and saved interests
+
+Before merging changes, verify that the relevant automated tests pass and that the affected features work locally.
