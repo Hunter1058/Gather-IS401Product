@@ -9,8 +9,8 @@ async function pageFixture({ script = 'events', viewError = false, user = { id: 
   const elements = new Map();
   const element = id => {
     if (!elements.has(id)) elements.set(id, { innerHTML: '', textContent: '', open: false, hidden: true,
-      listeners: {}, dispatch(type) { for (const fn of this.listeners[type] || []) fn({type}); },
-      classList: { add() {}, remove() {}, toggle() {} }, querySelector() { return null; }, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, setAttribute() {}, showModal() { this.open = true; }, close() { this.open = false; this.dispatch("close"); } });
+      listeners: {}, style: {}, dispatch(type) { for (const fn of this.listeners[type] || []) fn({type}); },
+      classList: { add() {}, remove() {}, toggle() {} }, querySelector() { return null; }, addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }, setAttribute(name, value) { (this.attributes ||= {})[name] = value; }, focus() {}, scrollIntoView() {}, replaceChildren() { this.innerHTML = ''; }, showModal() { this.open = true; }, close() { this.open = false; this.dispatch("close"); } });
     return elements.get(id);
   };
   const records = { saved: [...saved], rsvp: [...rsvp] }, writes = [], views = [], diagnostics = [];
@@ -22,7 +22,7 @@ async function pageFixture({ script = 'events', viewError = false, user = { id: 
     navigator,
     location: { href, protocol: "http:", hash: new URL(href).hash, assign(path) { this.redirect = path; } },
     history: { replaceState() {} },
-    document: { getElementById: element, addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, activeElement: null },
+    document: { getElementById: element, addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; }, activeElement: null, createElement() { return element(`created-${elements.size}`); }, body: { append(dialog) { elements.set(dialog.id, dialog); } } },
     addEventListener() {},
     async fetch(path, options = {}) {
       let payload;
@@ -231,16 +231,85 @@ test('missing shared events produce a clear message', async () => {
 
 test('unknown event details do not claim free admission or food availability', async () => {
   const page = await pageFixture();
-  assert.equal(page.run('eventAdmission({ price: null })'), 'Not Specified');
+  assert.equal(page.run('eventAdmission({ price: null })'), '');
   assert.equal(page.run('eventAdmission({ price: 0 })'), 'Free');
   assert.equal(page.run('eventAdmission({ price: 12 })'), '$12');
-  assert.equal(page.run('eventFood({ food: null })'), 'Food: Not Specified');
+  assert.equal(page.run('eventFood({ food: null })'), '');
   assert.equal(page.run('eventFood({ food: false })'), 'Food not provided');
   page.run('events[0].price = null; events[0].food = null; openEvent("1")');
-  assert.match(page.element('modal').innerHTML, /Food: Not Specified/);
-  assert.match(page.element('modal').innerHTML, /event-description/);
+  assert.doesNotMatch(page.element('modal').innerHTML, /Not Specified|Not specified/);
+  assert.doesNotMatch(page.element('modal').innerHTML, /event-description|Not specified/);
   assert.match(page.element('modal').innerHTML, /detail-location/);
   assert.doesNotMatch(page.element('modal').innerHTML, /View location/);
+});
+
+test('category selection counts update when multiple types are toggled on and off', async () => {
+  const page = await pageFixture();
+  page.run('toggleCategory("Arts", true); toggleCategory("Spiritual", true)');
+  assert.equal(page.element('categoryFilterSummary').textContent, '2 categories selected');
+  page.run('toggleCategory("Arts", false)');
+  assert.equal(page.element('categoryFilterSummary').textContent, '1 category selected');
+  page.run('toggleCategory("Spiritual", false)');
+  assert.equal(page.element('categoryFilterSummary').textContent, 'All categories');
+});
+
+test('campus and building filters normalize values and remove room numbers', async () => {
+  const page = await pageFixture();
+  page.run(`events[0].campusLocation = "On Campus";
+    events[0].location = "Wilkinson Center 3220";
+    events.push({...events[0], id:"2", name:"Off campus", campusLocation:"Off Campus", location:"Wilkinson Center Room 4412"});
+    setFilter("campus", "off-campus")`);
+  assert.deepEqual(page.run('filteredEvents().map(event => event.id)'), ['2']);
+  page.run('setFilter("campus", ""); setFilter("location", "Wilkinson Center")');
+  assert.deepEqual(page.run('filteredEvents().map(event => event.id)'), ['1', '2']);
+  assert.match(page.element('toolbar').innerHTML, /<option\s*>Wilkinson Center<\/option>/);
+});
+
+test('organizer and major filters only offer real event values and match them', async () => {
+  const page = await pageFixture();
+  assert.doesNotMatch(page.element('toolbar').innerHTML, /Club \/ organizer|Major relevance/);
+  page.run(`events[0].club = "BYU Arts";
+    events[0].major = "Fine Arts";
+    events.push({...events[0], id:"2", name:"Business event", club:"Business Society", major:"Business"});
+    renderToolbar()`);
+  assert.match(page.element('toolbar').innerHTML, /Club \/ organizer/);
+  assert.match(page.element('toolbar').innerHTML, /Major relevance/);
+  page.run('setFilter("club", "BYU Arts"); setFilter("major", "Fine Arts")');
+  assert.deepEqual(page.run('filteredEvents().map(event => event.id)'), ['1']);
+});
+
+test('calendar day schedule bookmarks without opening event details', async () => {
+  const page = await pageFixture();
+  page.run('view = "calendar"; selectDay("2099-11-05")');
+  assert.equal(page.element('dayModal').open, true);
+  assert.match(page.element('dayModal').innerHTML, /class="event-bookmark"/);
+  await page.run('bookmark("1")');
+  assert.deepEqual(page.records.saved, ['1']);
+  assert.equal(page.element('modal').open, false);
+  assert.equal(page.run('selectedDay'), '2099-11-05');
+  assert.match(page.element('dayModal').innerHTML, /class="event-bookmark"[^>]*aria-pressed="true"/);
+});
+
+test('past events cannot be newly bookmarked but existing bookmarks can be removed', async () => {
+  const page = await pageFixture();
+  page.run('events[0].date = "2000-01-01"');
+  assert.match(page.run('planButton("bookmark", events[0])'), /disabled/);
+  page.run('data.saved.push("1")');
+  assert.doesNotMatch(page.run('planButton("bookmark", events[0])'), /disabled/);
+});
+
+test('filter toolbar can minimize and reopen with matching expanded state', async () => {
+  const page = await pageFixture();
+  await page.run('toggleToolbar()');
+  assert.match(page.element('toolbar').className, /is-collapsed/);
+  assert.match(page.element('toolbar').innerHTML, /id="eventSearchControls" hidden/);
+  assert.equal(page.element('toolbarReopenButton').hidden, false);
+  assert.equal(page.element('toolbarReopenButton').attributes['aria-expanded'], 'true');
+  await page.run('toggleToolbar()');
+  assert.doesNotMatch(page.element('toolbar').className, /is-collapsed/);
+  assert.doesNotMatch(page.element('toolbar').innerHTML, /id="eventSearchControls" hidden/);
+  assert.equal(page.element('toolbarReopenButton').hidden, true);
+  assert.equal(page.element('toolbarReopenButton').attributes['aria-expanded'], 'false');
 });
 
 test('mode switches update the selected toolbar chip', async () => {

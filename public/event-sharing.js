@@ -2,7 +2,7 @@
 
 // Shared public event links and native sharing for every event surface.
 function shareButton(event) {
-  return `<button type="button" class="event-share" aria-label="Share ${esc(event.name)}" onclick="openEventShare('${event.id}')">${icon("share-2")}<span>Share</span></button>`;
+  return `<button type="button" class="event-share" aria-label="Share ${esc(event.name)}" onclick="event.stopPropagation();openEventShare('${event.id}')">${icon("share-2")}<span>Share</span></button>`;
 }
 function eventShareUrl(id) {
   const url = new URL("/events", location.href);
@@ -169,13 +169,22 @@ function activateEventCard(event, id) {
 }
 
 function eventLocationLink(event) {
-  if (!event.location?.trim()) return "Not Specified";
+  if (!event.location?.trim()) return "";
   const query = encodeURIComponent(event.location + " BYU Provo Utah");
   return `<a class="event-location" href="https://www.google.com/maps/search/?api=1&query=${query}" target="_blank" rel="noopener" aria-label="Open ${esc(event.location)} in Maps">${esc(event.location)}</a>`;
 }
 
+function eventBuilding(event) {
+  const location = String(event.location || "").trim();
+  return location
+    .replace(/^(?:room|rm\.?)\s*[\w-]+\s*[,·-]\s*/i, "")
+    .replace(/(?:,\s*|\s+(?:room|rm\.?|#)\s*|\s+#)\s*[A-Z]?\d+[A-Z]?\s*$/i, "")
+    .replace(/\s+\d{2,5}[A-Z]?\s*$/i, "")
+    .trim() || location;
+}
+
 function eventWhereTile(event) {
-  if (!event.location?.trim()) return `<div><span class="detail-label">${icon("map-pin")} Where</span><b>Not Specified</b></div>`;
+  if (!event.location?.trim()) return "";
   const query = encodeURIComponent(event.location + " BYU Provo Utah");
   return `<a class="detail-location" href="https://www.google.com/maps/search/?api=1&query=${query}" target="_blank" rel="noopener" aria-label="Open ${esc(event.location)} in Maps"><span class="detail-label">${icon("map-pin")} Where ${icon("external-link")}</span><b>${esc(event.location)}</b><span>Open in Maps</span></a>`;
 }
@@ -183,14 +192,15 @@ function eventWhereTile(event) {
 function eventAdmission(event) {
   return typeof event.price === "number" && Number.isFinite(event.price)
     ? event.price === 0 ? "Free" : "$" + event.price.toFixed(0)
-    : "Not Specified";
+    : "";
 }
 function eventFood(event) {
-  return event.food === true ? "Food provided" : event.food === false ? "Food not provided" : "Food: Not Specified";
+  return event.food === true ? "Food provided" : event.food === false ? "Food not provided" : "";
 }
 function eventAdmissionTag(event) {
   const free = event.price === 0;
-  return `<span class="${free ? "tag event-free" : "event-admission muted"}">${eventAdmission(event)}</span>${event.food === true ? '<span class="event-admission muted">Food provided</span>' : ""}`;
+  if (eventAdmission(event) === "" && event.food !== true) return "";
+  return `${eventAdmission(event) ? `<span class="${free ? "tag event-free" : "event-admission muted"}">${eventAdmission(event)}</span>` : ""}${event.food === true ? '<span class="event-admission muted">Food provided</span>' : ""}`;
 }
 
 // Recipient inbox belongs to the existing Friends tab, with bounded pagination.

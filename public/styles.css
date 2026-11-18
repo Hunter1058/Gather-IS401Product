@@ -2382,8 +2382,8 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 .calendar-month .calendar { border: 0; border-radius: 0; box-shadow: none; background: transparent; }
 .calendar-month .calhead { background: var(--detail); }
 .calendar-month .calhead div { font-weight: 600; padding: 12px 4px; }
-.calendar-month .calgrid { grid-auto-rows: 156px; }
-.calendar-month .day { height: 156px; min-height: 0; padding: 8px; overflow: hidden; }
+.calendar-month .calgrid { grid-auto-rows: minmax(156px, auto); }
+.calendar-month .day { height: auto; min-height: 156px; padding: 8px; overflow: visible; }
 .calendar-month .day:nth-child(7n) { border-right: 0; }
 .calendar-month .day.dim { background: var(--row-surface); }
 .calendar-month .day.selected-day { background: var(--primary-soft); box-shadow: inset 0 0 0 2px var(--primary); }
@@ -2399,8 +2399,8 @@ dialog.profile-photo-viewer[open] { display: grid; place-items: center; }
 @media (max-width: 600px) {
   .calendar-month-heading { padding: 18px 16px; }
   .calendar-month-heading h2 { font-size: 20px; }
-  .calendar-month .calgrid { grid-auto-rows: 82px; }
-  .calendar-month .day { height: 82px; min-height: 0; padding: 5px 2px; text-align: center; }
+  .calendar-month .calgrid { grid-auto-rows: minmax(82px, auto); }
+  .calendar-month .day { height: auto; min-height: 82px; padding: 5px 2px; text-align: center; overflow: visible; }
   .calendar-month .calhead div { font-size: 10px; }
   .calendar-previews, .calendar-more { display: none; }
   .calendar-mobile-count { display: block; margin: 6px auto 0; padding: 2px 8px; border: 0; border-radius: 999px; background: var(--primary-soft); color: var(--primary); font-size: 11px; }
